@@ -19,6 +19,7 @@ theories/lang/proofmode.v
 theories/lang/adequacy.v
 theories/lang/total_adequacy.v
 theories/lang/proph_erasure.v
+theories/lang/lib/array.v
 
 # Logic
 theories/base_logic/lib/mono_list.v # from iris-staging
@@ -132,6 +133,7 @@ theories/hazptr/proof_cldeque.v
 theories/hazptr/proof_harris_operations.v
 theories/hazptr/proof_harris_michael_find.v
 theories/hazptr/proof_harris_find.v
+theories/hazptr/CachedWaitFree.v
 
 theories/hazptr/closed_proofs.v
 theories/hazptr/client.v
