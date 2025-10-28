@@ -635,7 +635,8 @@ Section cached_wf.
       (* The backup pointer is in the set of validated pointer iff it has actually been validated *)
       ⌜γ_backup ∈ validated ↔ t = 0⌝ ∗
       (* All pointers validated have also been logged *)
-      ⌜validated ⊆ dom log⌝.
+      ⌜validated ⊆ dom log⌝ ∗
+      ⌜dom log = dom abstraction⌝.
 
   Definition AU_cas (Φ : val → iProp Σ) γ (expected desired : list val) (lexp ldes : loc) dq dq' : iProp Σ :=
        AU <{ ∃∃ backup actual, value γ backup actual }>
@@ -643,13 +644,13 @@ Section cached_wf.
           <{ if bool_decide (actual = expected) then ∃ backup', value γ backup' desired else value γ backup actual,
              COMM lexp ↦∗{dq} expected ∗ ldes ↦∗{dq'} desired -∗ Φ #(bool_decide (actual = expected)) }>.
 
-  Definition log_tokens (log : gmap gname (list val)) : iProp Σ :=
-    [∗ map] γ ↦ _ ∈ log, token γ.
+  (* Definition log_tokens (log : gmap gname (list val)) : iProp Σ :=
+    [∗ map] γ ↦ _ ∈ log, token γ. *)
 
-  Definition cas_inv (Φ : val → iProp Σ) (γ γₑ γₗ γₜ γ_p : gname) γd (lexp ldes : loc) (dq dq' : dfrac) (expected desired : list val) s p R size : iProp Σ :=
+  (* Definition cas_inv (Φ : val → iProp Σ) (γ γₑ γₗ γₜ γ_p : gname) γd (lexp ldes : loc) (dq dq' : dfrac) (expected desired : list val) s p R size : iProp Σ :=
       ((lexp ↦∗{dq} expected ∗ ldes ↦∗{dq'} desired -∗ Φ #false) ∗ (∃ b : bool, ghost_var γₑ (1/2) b) ∗ ghost_var γₗ (1/2) false) (* The failing write has already been linearized and its atomic update has been consumed *)
     ∨ (£ 1 ∗ AU_cas Φ γ expected desired lexp ldes dq dq' ∗ ghost_var γₑ (1/2) true ∗ ghost_var γₗ (1/2) true ∗ Shield hazptr γd s (Validated p γ_p R size))
-    ∨ (token γₜ ∗ (∃ b : bool, ghost_var γₑ (1/2) b) ∗ ∃ b : bool, ghost_var γₗ (1/2) b).  (* The failing write has linearized and returned *)
+    ∨ (token γₜ ∗ (∃ b : bool, ghost_var γₑ (1/2) b) ∗ ∃ b : bool, ghost_var γₗ (1/2) b).  The failing write has linearized and returned *)
 
   (* Lemma log_tokens_impl log l γ :
     fst <$> log !! l = Some γ → log_tokens log -∗ token γ.
@@ -683,11 +684,11 @@ Section cached_wf.
         ghost_var γₑ (1/2) (bool_decide (actual = expected)) ∗
         inv casN (cas_inv Φ γ γₑ γₗ γₜ lexp ldes dq dq' expected desired). *)
 
-  Definition registry_inv γ γ_actual lactual actual (requests : list (gname * gname * loc)) (used : gset loc) : iProp Σ :=
+  (* Definition registry_inv γ γ_actual lactual actual (requests : list (gname * gname * loc)) (used : gset loc) : iProp Σ :=
     [∗ list] '(γₗ, γₑ, lexp) ∈ requests, ∃ (γ_exp : gname), 
-    request_inv γ γₗ γₑ lactual lexp actual used.
+    request_inv γ γₗ γₑ lactual lexp actual used. *)
 
-  Lemma registry_inv_mono γ backup expected requests used used' : 
+  (* Lemma registry_inv_mono γ backup expected requests used used' : 
     used ⊆ used' →
       registry_inv γ backup expected requests used -∗
         registry_inv γ backup expected requests used'.
@@ -701,7 +702,7 @@ Section cached_wf.
       rewrite /request_inv.
       iDestruct "Hreqinv" as "(%Hin & $ & $)".
       iPureIntro. set_solver.
-  Qed.
+  Qed. *)
 
   Lemma array_frac_add l dq dq' vs vs' : length vs = length vs' → l ↦∗{dq} vs -∗ l ↦∗{dq'} vs' -∗ l ↦∗{dq ⋅ dq'} vs ∗ ⌜vs = vs'⌝.
   Proof.
@@ -712,7 +713,7 @@ Section cached_wf.
       repeat rewrite array_cons.
       iDestruct "Hl" as "[Hl Hls]".
       iDestruct "Hl'" as "[Hl' Hls']".
-      iCombine "Hl Hl'" as "Hl" gives %[_ <-].
+      iPoseProof (pointsto_combine with "Hl Hl'") as "[Hl ->]".
       iFrame.
       iPoseProof ("IH" with "[//] [$] [$]") as "[Hl <-]".
       by iFrame.
@@ -740,7 +741,7 @@ Section cached_wf.
 
   Definition gmap_injective {K A} `{Countable K} (m : gmap K A) :=
     ∀ i j v, m !! i = Some v → m !! j = Some v → i = j.
-
+(* 
   Definition read_inv (γ γᵥ γₕ γᵢ γ_val : gname) (l : loc) (len : nat) : iProp Σ :=
     ∃ (ver : nat) (log : gmap loc (gname * list val)) (actual cache : list val) (marked_backup : val) (backup backup' : loc) (index : list gname) (validated : gset loc),
       (* Physical state of version *)
@@ -793,15 +794,15 @@ Section cached_wf.
       (* The backup pointer is in the set of validated pointer iff it has actually been validated *)
       ⌜if bool_decide (backup ∈ validated) then marked_backup = InjRV #backup else marked_backup = InjLV #backup⌝ ∗
       (* All pointers validated have also been logged *)
-      ⌜validated ⊆ dom log⌝.
+      ⌜validated ⊆ dom log⌝. *)
 
-  Definition gmap_mono (order : gmap gname nat) (loc loc' : loc) :=
+  (* Definition gmap_mono (order : gmap gname nat) (loc loc' : loc) :=
     ∀ i j, 
       order !! loc = Some i → 
         order !! loc' = Some j →
-          i < j.
+          i < j. *)
 
-  Lemma gmap_mono_alloc (l : loc) (i : nat) (order : gmap gname nat) (index : list gname) :
+  (* Lemma gmap_mono_alloc (l : loc) (i : nat) (order : gmap gname nat) (index : list gname) :
     l ∉ index →
       StronglySorted (gmap_mono order) index →
         StronglySorted (gmap_mono (<[l := i]>order)) index.
@@ -874,9 +875,9 @@ Section cached_wf.
     - inv Hssorted. inv Hord. simpl. constructor.
       + by apply IH.
       + rewrite Forall_app; auto.
-  Qed.
+  Qed. *)
 
-  Definition cached_wf_inv (γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ : gname) (l : loc) : iProp Σ :=
+  (* Definition cached_wf_inv (γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ : gname) (l : loc) : iProp Σ :=
     ∃ (ver : nat) log (actual : list val) (marked_backup : val) (backup : loc) requests (vers : gmap gname nat) (index : list gname) (order : gmap gname nat) (idx : nat),
       (* Ownership of remaining quarter of logical counter *)
       mono_nat_auth_own γᵥ (1/2) ver ∗
@@ -928,7 +929,7 @@ Section cached_wf.
       (* Cache versions are associated with monotonically increasing backups *)
       ⌜StronglySorted (gmap_mono order) index⌝ ∗
       (* The order of the current backup is an upper bound on all others *)
-      ⌜map_Forall (λ _ idx', idx' ≤ idx) order⌝.
+      ⌜map_Forall (λ _ idx', idx' ≤ idx) order⌝. *)
 
   Global Instance pointsto_array_persistent l vs : Persistent (l ↦∗□ vs).
   Proof.
@@ -949,10 +950,10 @@ Section cached_wf.
     by eapply elem_of_dom, Hrange.
   Qed.
 
-  Lemma wp_array_copy_to' γ γᵥ γₕ γᵢ γ_val (dst src : loc) (n i : nat) vdst ver :
+  Lemma wp_array_copy_to' γ γᵥ γₕ γᵢ γ_val γz γ_abs (dst src : loc) (n i : nat) vdst ver :
     (* Length of destination matches that of source (bigatomic) *)
     i ≤ n → length vdst = n - i →
-      inv readN (read_inv γ γᵥ γₕ γᵢ γ_val src n) -∗
+      inv readN (read_inv γ γᵥ γₕ γᵢ γ_val γz γ_abs src n) -∗
         (* The current version is at least [ver] *)
         mono_nat_lb_own γᵥ ver -∗
           {{{ (dst +ₗ i) ↦∗ vdst }}}
@@ -971,11 +972,11 @@ Section cached_wf.
                   (* If the version is even, then the value read then was valid, as the lock was unlocked *)
                   (⌜Nat.Even ver'⌝ →
                   (* Then there exists some list of values associated with that version *)
-                    ∃ l γₜ vs,
+                    ∃ γ_l vs,
                       (* Version [i] is associated with backup [l] *)
-                      index_frag_own γᵢ (Nat.div2 ver') l ∗
+                      index_frag_own γᵢ (Nat.div2 ver') γ_l ∗
                       (* Location [l] is associated with value [vs] *)
-                      log_frag_own γₕ l γₜ vs ∗
+                      log_frag_own γₕ γ_l vs ∗
                       (* Where the value stored at index [i + j] is exactly [v] *)
                       ⌜vs !! (i + j)%nat = Some v⌝)) }}}.
   Proof.
@@ -998,7 +999,7 @@ Section cached_wf.
       clear Hdone. simpl in *. rewrite array_cons.
       iDestruct "Hdst" as "[Hhd Htl]".
       wp_bind (! _)%E. 
-      iInv readN as "(%ver' & %log & %actual & %cache & %marked_backup & %backup & %backup' & %index & %validated & >Hver & >Hbackup & >Hγ & >%Hunboxed & >#□Hbackup & >%Hindex & >%Hvalidated & >%Hlenactual & >%Hlencache & >%Hloglen & Hlog & >%Hlogged & >●Hlog & >%Hlenᵢ & >%Hnodup & >%Hrange & >●Hγᵢ & >●Hγᵥ & >Hcache & >%Hcons & Hlock)" "Hcl".
+      iInv readN as "(%ver' & %log & %abstraction & %actual & %cache & %γ_backup & %γ_backup' & %backup & %backup' & %index & %validated & %t & >Hver & >Hbackup_ptr & >Hγ & >%Hunboxed & Hbackup_managed & >%Hindex & >%Htag & >%Hlenactual & >%Hlencache & >%Hloglen & Hlog & >%Hlogged & >●Hlog & >●Hγ_abs & >%Habs_backup & >%Habs_backup' & >%Hlenᵢ & >%Hnodup & >%Hrange & >●Hγᵢ & >●Hγᵥ & >Hcache & >%Hcons & Hlock & >●Hγ_val & >%Hvalidated_iff & >%Hvalidated_sub & >%Hdom_eq)" "Hcl".
       wp_apply (wp_load_offset with "Hcache").
       { apply list_lookup_lookup_total_lt. lia. }
       iMod (index_frag_alloc with "●Hγᵢ") as "[●Hγᵢ #◯Hγᵢ]".
@@ -1007,11 +1008,11 @@ Section cached_wf.
       iPoseProof (mono_nat_lb_own_valid with "●Hγᵥ Hlb") as "[%Ha %Hord]".
       iPoseProof (mono_nat_lb_own_get with "●Hγᵥ") as "#Hlb'".
       eapply backup_logged in Hrange as Hbackup_logged; last done.
-      destruct Hbackup_logged as [[γₜ backup'vs] Hbackup'vs].
-      iMod (log_frag_alloc backup' with "●Hlog") as "[●Hlog #◯Hlog]".
+      destruct Hbackup_logged as [backup'vs Hbackup'vs].
+      iMod (log_frag_alloc γ_backup' with "●Hlog") as "[●Hlog #◯Hlog]".
       { done. }
       iMod ("Hcl" with "[-Hhd Htl HΦ]") as "_".
-      { iExists ver', log, actual, cache, marked_backup, backup, backup', index. iFrame "∗ # %". }
+      { iExists ver', log, abstraction, actual, cache, γ_backup, γ_backup', backup, backup', index, validated, t. iFrame "∗ # %". }
       iModIntro.
       wp_store.
       wp_pures.
@@ -1040,13 +1041,11 @@ Section cached_wf.
           { rewrite Nat.Odd_succ //. }
           rewrite -Nat.even_spec in Heven'.
           rewrite Heven' in Hcons.
-          iExists backup', _.
+          iExists γ_backup', _.
           iFrame "∗ # %".
           rewrite Nat.add_0_r.
           rewrite list_lookup_lookup_total_lt //.
           * iPureIntro. do 2 f_equal.
-            rewrite -lookup_fmap lookup_fmap_Some in Hcons.
-            destruct Hcons as ([γₜ' vs] & Heq & Hlookup).
             simpl in *. congruence.
           * rewrite /map_Forall in Hloglen.
             apply Hloglen in Hbackup'vs as ->. lia.
@@ -1055,7 +1054,7 @@ Section cached_wf.
           rewrite -Nat.add_1_r -Nat.add_assoc Nat.add_1_r //.  }
   Qed.
 
-  Lemma log_auth_auth_agree γₕ p q (log log' : gmap loc (gname * list val)) :
+  Lemma log_auth_auth_agree γₕ p q (log log' : gmap gname (list val)) :
     log_auth_own γₕ p log -∗
       log_auth_own γₕ q log'  -∗
         ⌜log = log'⌝.
@@ -1128,10 +1127,10 @@ Section cached_wf.
     repeat rewrite -lookup_fmap //.
   Qed. *)
 
-  Lemma wp_array_copy_to_wk γ γᵥ γₕ γᵢ γ_val (dst src : loc) (n : nat) vdst ver :
+  Lemma wp_array_copy_to_wk γ γᵥ γₕ γᵢ γ_val γz γ_abs (dst src : loc) (n : nat) vdst ver :
     (* Length of destination matches that of source (bigatomic) *)
     length vdst = n →
-      inv readN (read_inv γ γᵥ γₕ γᵢ γ_val src n) -∗
+      inv readN (read_inv γ γᵥ γₕ γᵢ γ_val γz γ_abs src n) -∗
         (* The current version is at least [ver] *)
         mono_nat_lb_own γᵥ ver -∗
           {{{ dst ↦∗ vdst }}}
@@ -1154,7 +1153,7 @@ Section cached_wf.
                       (* Version [i] is associated with backup [l] *)
                       index_frag_own γᵢ (Nat.div2 ver') l ∗
                       (* Location [l] is associated with value [vs] *)
-                      log_frag_own γₕ l γₜ vs ∗
+                      log_frag_own γₕ l vs ∗
                       (* Where the value stored at index [i + j] is exactly [v] *)
                       ⌜vs !! i = Some v⌝ ))}}}.
   Proof.
