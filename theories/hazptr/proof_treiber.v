@@ -30,7 +30,7 @@ Variable (hazptr : hazard_pointer_spec Σ hazptrN).
 Definition node_info γ_p (x : val) (n : option blk) :=
   own γ_p (to_agree (x, n)).
 
-Definition node (p : blk) lv γ_p : iProp :=
+Definition node (_ : blk) lv γ_p : iProp :=
   ∃ x n, ⌜lv = [ x; #(oblk_to_lit n) ]⌝ ∗ node_info γ_p x n.
 
 Fixpoint phys_list γz (lopt : option blk) (xs : list val) : iProp :=
@@ -204,9 +204,10 @@ Proof using All.
 
   wp_pures. wp_bind (! _)%E.
   wp_apply (shield_read with "S") as (??) "(S & #Info_h1' & %EQ)"; [solve_ndisj|lia|].
-  iDestruct "Info_h1'" as (x2 n2) "[-> Info_h1']".
+  iDestruct "Info_h1'" as (x2 n2) "[-> _]".
+  rewrite /node_info.
 
-  iCombine "Info_h1 Info_h1'" gives %[= <- <-]%to_agree_op_inv_L.
+  (* iCombine "Info_h1 Info_h1'" gives %[= <- <-]%to_agree_op_inv_L. *)
   iClear "Info_h1'". injection EQ as [= <-].
 
   wp_pures. wp_bind (CmpXchg _ _ _).

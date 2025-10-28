@@ -30,10 +30,10 @@ From iris.prelude Require Import options.
 
 From smr Require Import hazptr.spec_hazptr.
 
-Notation version := 0 (only parsing).
-Notation backup := 1 (only parsing).
-Notation domain := 2 (only parsing).
-Notation cache := 3 (only parsing).
+Notation version_off := 0 (only parsing).
+Notation backup_off := 1 (only parsing).
+Notation domain_off := 2 (only parsing).
+Notation cache_off := 3 (only parsing).
 
 Section code.
 
@@ -42,9 +42,9 @@ Section code.
   Definition new_big_atomic (n : nat) : val :=
     λ: "src" "domain",
       let: "dst" := AllocN #(S (S (S n))) #0 in
-      "dst" +ₗ #backup <- array_clone "src" #n;;
-      "dst" +ₗ #domain <- "domain";;
-      array_copy_to ("dst" +ₗ #cache) "src" #n;;
+      "dst" +ₗ #backup_off <- array_clone "src" #n;;
+      "dst" +ₗ #domain_off <- "domain";;
+      array_copy_to ("dst" +ₗ #cache_off) "src" #n;;
       "dst".
 
   Definition is_valid : val :=
@@ -52,16 +52,16 @@ Section code.
 
   Definition read (n : nat) : val :=
     λ: "l",
-      let: "ver" := !("l" +ₗ #version) in
-      let: "data" := array_clone ("l" +ₗ #cache) #n in
+      let: "ver" := !("l" +ₗ #version_off) in
+      let: "data" := array_clone ("l" +ₗ #cache_off) #n in
       let: "p" := NewProph in
-      let: "backup" := !("l" +ₗ #backup) in
+      let: "backup" := !("l" +ₗ #backup_off) in
       if: is_valid "backup" && (Resolve !"l" "p" #() = "ver") then (
         "data"
       ) else (
-        let: "domain" := !("l" +ₗ #domain) in
+        let: "domain" := !("l" +ₗ #domain_off) in
         let: "shield" := hazptr.(shield_new) "domain" in
-        let: "backup'" := hazptr.(shield_protect) "shield" ("l" +ₗ #backup) in
+        let: "backup'" := hazptr.(shield_protect) "shield" ("l" +ₗ #backup_off) in
         array_copy_to "data" (untag "backup'") #n;;
         hazptr.(shield_drop) "shield";;
         "data"
@@ -78,14 +78,14 @@ Section code.
       if: ("ver" `rem` #2 = #0) && (CAS "l" "ver" (#1 + "ver")) then
         (* Lock was successful *)
         (* Perform update *)
-        array_copy_to ("l" +ₗ #cache) "desired" #n;;
+        array_copy_to ("l" +ₗ #cache_off) "desired" #n;;
         (* Unlock *)
         "l" <- #2 + "ver";;
         CmpXchg ("l" +ₗ #1) "backup'" (untag "backup'");;
         #()
       else #().
 
-  Definition cas (n : nat) : val :=
+  (* Definition cas (n : nat) : val :=
     λ: "l" "expected" "desired",
       let: "old" := read' n "l" in
       if: array_equal (Fst (Fst "old")) "expected" #n then 
@@ -97,22 +97,26 @@ Section code.
             try_validate n "l" (Snd "old") "desired" "backup'";;
             #true
           else #false
-      else #false.
+      else #false. *)
+
+End code.
 
 Definition log := gmap nat $ agree $ (loc * list val)%type.
 
 Definition index := gmap nat $ agree nat.
 
-Definition indexUR := authUR $ gmapUR nat (agreeR locO).
+Definition indexUR := authUR $ gmapUR nat (agreeR gnameO).
 
-Definition logUR := authUR $ gmapUR loc $ agreeR $ (prodO gnameO (listO valO)).
+Definition logUR := authUR $ gmapUR gname $ agreeR $ listO valO.
 
 Definition requestReg := gmap nat $ agree (gname * gname * loc).
-Definition requestRegUR := authUR $ gmapUR nat $ agreeR $ prodO (prodO gnameO gnameO) locO.
+Definition requestRegUR := authUR $ gmapUR nat $ agreeR $ prodO (prodO gnameO gnameO) gname.
 
-Definition validatedUR := authUR $ gsetUR $ locO.
-Definition invalidUR := authUR $ gmapUR locO $ agreeR natO.
-Definition orderUR := authUR $ gmapUR locO $ agreeR natO.
+Definition validatedUR := authUR $ gsetUR $ gnameO.
+Definition invalidUR := authUR $ gmapUR gnameO $ agreeR natO.
+Definition orderUR := authUR $ gmapUR gnameO $ agreeR natO.
+
+Definition abstractionUR := authUR $ gmapUR gnameO $ agreeR blkO.
 
 Class cached_wfG (Σ : gFunctors) := {
   cached_wf_heapGS :: heapGS Σ;
@@ -121,15 +125,28 @@ Class cached_wfG (Σ : gFunctors) := {
   cached_wf_requestRegUR :: inG Σ requestRegUR;
   cached_wf_mono_natG :: mono_natG Σ;
   cached_wf_ghost_varG_bool :: ghost_varG Σ bool;
-  cached_wf_ghost_varG_loc_val :: ghost_varG Σ (loc * list val);
+  cached_wf_ghost_varG_loc_val :: ghost_varG Σ (gname * list val);
   cached_wf_tokenG :: tokenG Σ;
   cached_wf_invalidUR :: inG Σ invalidUR;
   cached_wf_orderUR :: inG Σ orderUR;
   cached_wf_validatedUR :: inG Σ validatedUR;
+  cached_wf_abstractonUR :: inG Σ abstractionUR;
 }.
 
 Section cached_wf.
   Context `{!cached_wfG Σ, !heapGS Σ}.
+
+  Context (N : namespace).
+
+  Definition cached_wfN := N .@ "cached_wf".
+
+  Definition casN := N .@ "cas".
+
+  Definition readN := N .@ "read".
+
+  Definition hazptrN := N .@ "hazptr".
+
+  Variable (hazptr : hazard_pointer_spec Σ hazptrN).
 
   Lemma wp_array_equal (l l' : loc) (dq dq' : dfrac) (vs vs' : list val) :
     length vs = length vs' → Forall2 vals_compare_safe vs vs' →
@@ -173,33 +190,29 @@ Section cached_wf.
         rewrite bool_decide_eq_false_2; auto; by intros [=].
   Qed.
 
-  Context (N : namespace).
+  (* Definition gmap_auth_own `{Countable K} {V} (γ : gname) (q : Qp) (m : gmap K V) := own (A:=gmapUR K (agreeR V)) γ (●{#q} (fmap (M:=gmap K) to_agree m)). *)
 
-  Definition cached_wfN := N .@ "cached_wf".
+  Definition index_auth_own γᵢ (q : Qp) (index : list gname) := own γᵢ (●{#q} map_seq 0 (to_agree <$> index)).
 
-  Definition casN := N .@ "cas".
+  Definition index_frag_own' γ (index : list gname) := own γ (◯ map_seq 0 (to_agree <$> index)).
 
-  Definition readN := N .@ "read".
+  Definition log_auth_own (γᵥ : gname) (q : Qp) (log : gmap gname (list val)) := own γᵥ (●{#q} fmap (M:=gmap gname) to_agree log).
 
-  Definition index_auth_own γᵢ (q : Qp) (index : list loc) := own γᵢ (●{#q} map_seq 0 (to_agree <$> index)).
+  Definition vers_auth_own (γᵥ : gname) (q : Qp) (log : gmap gname nat) := own γᵥ (●{#q} fmap (M:=gmap gname) to_agree log).
 
-  Definition index_frag_own' γ (index : list loc) := own γ (◯ map_seq 0 (to_agree <$> index)).
+  Definition value γ (backup : gname) (vs : list val) : iProp Σ := ghost_var γ (1/2) (backup, vs).
 
-  Definition log_auth_own (γᵥ : gname) (q : Qp) (log : gmap loc (gname * list val)) := own γᵥ (●{#q} fmap (M:=gmap loc) to_agree log).
+  Definition log_frag_own γₕ l (value : list val) := own γₕ (◯ {[l := to_agree value ]}).
 
-  Definition vers_auth_own (γᵥ : gname) (q : Qp) (log : gmap loc nat) := own γᵥ (●{#q} fmap (M:=gmap loc) to_agree log).
+  Definition vers_frag_own γ (l : gname) (ver : nat) := own γ (◯ {[l := to_agree ver]}).
 
-  Definition value γ (backup : loc) (vs : list val) : iProp Σ := ghost_var γ (1/2) (backup, vs).
+  Definition index_frag_own γᵢ (i : nat) (l : gname) := own γᵢ (◯ {[i := to_agree l]}).
 
-  Definition log_frag_own γₕ l γ (value : list val) := own γₕ (◯ {[l := to_agree (γ, value)]}).
+  Definition validated_auth_own (γ : gname) (q : Qp) (validated : gset gname) := own γ (●{#q} validated).
 
-  Definition vers_frag_own γ (l : loc) (ver : nat) := own γ (◯ {[l := to_agree ver]}).
+  Definition validated_frag_own (γ : gname) (l : gname) := own γ (◯ {[ l ]}).
 
-  Definition index_frag_own γᵢ (i : nat) (l : loc) := own γᵢ (◯ {[i := to_agree l]}).
-
-  Definition validated_auth_own (γ : gname) (q : Qp) (validated : gset loc) := own γ (●{#q} validated).
-
-  Definition validated_frag_own (γ : gname) (l : loc) := own γ (◯ {[ l ]}).
+  Definition abstraction_auth_own (γᵥ : gname) (q : Qp) (log : gmap gname blk) := own γᵥ (●{#q} fmap (M:=gmap gname) to_agree log).
 
   (* Maximum value over a map *)
   Definition map_max `{Countable K} (m : gmap K nat) : nat :=
@@ -233,7 +246,7 @@ Section cached_wf.
         rewrite le_max_iff_nat. auto.
   Qed.
 
-  Lemma index_auth_update (l : loc) γ (index : list loc) :
+  Lemma index_auth_update (l : gname) γ (index : list gname) :
     index_auth_own γ 1 index ==∗
       index_auth_own γ 1 (index ++ [l]) ∗ index_frag_own γ (length index) l.
   Proof.
@@ -281,7 +294,7 @@ Section cached_wf.
     by iFrame.
   Qed.
 
-  Lemma validated_auth_update (l : loc) (γ : gname) (validated : gset loc) :
+  Lemma validated_auth_update (l : gname) (γ : gname) (validated : gset gname) :
     validated_auth_own γ 1 validated ==∗
       validated_auth_own γ 1 ({[ l ]} ∪ validated) ∗ validated_frag_own γ l.
   Proof.
@@ -296,7 +309,7 @@ Section cached_wf.
     apply auth_frag_mono. set_solver.
   Qed.
 
-  Lemma validated_auth_frag_alloc (l : loc) (γ : gname) (q : Qp) (validated : gset loc) :
+  Lemma validated_auth_frag_alloc (l : gname) (γ : gname) (q : Qp) (validated : gset gname) :
     l ∈ validated →
       validated_auth_own γ q validated ==∗ validated_auth_own γ q validated ∗ validated_frag_own γ l.
   Proof.
@@ -306,7 +319,7 @@ Section cached_wf.
     by iFrame.
   Qed.
 
-  Lemma validated_auth_frag_dup (γ : gname) (q : Qp) (validated : gset loc) :
+  Lemma validated_auth_frag_dup (γ : gname) (q : Qp) (validated : gset gname) :
     validated_auth_own γ q validated ==∗ validated_auth_own γ q validated ∗ own γ (◯ validated).
   Proof.
     iIntros "H●".
@@ -329,10 +342,10 @@ Section cached_wf.
 
   (* Lemma validated_auth_alloc_empty : |==> ∃ γ, validated_auth_own γ 1 ∅)%I. *)
 
-  Lemma log_auth_update (l : loc) (value : list val) (γ γₕ : gname) (log : gmap loc (gname * list val)) :
+  Lemma log_auth_update (l : gname) (value : list val) (γₕ : gname) (log : gmap gname (list val)) :
     log !! l = None →
       log_auth_own γₕ 1 log ==∗
-        log_auth_own γₕ 1 (<[l := (γ, value)]>log) ∗ log_frag_own γₕ l γ value.
+        log_auth_own γₕ 1 (<[l := value]>log) ∗ log_frag_own γₕ l value.
   Proof.
     iIntros (Hfresh) "H●".
     rewrite /log_auth_own /log_frag_own.
@@ -341,14 +354,14 @@ Section cached_wf.
       apply alloc_singleton_local_update 
         with 
           (i := l)
-          (x := to_agree (γ, value)).
+          (x := to_agree value).
       { by rewrite lookup_fmap fmap_None. }
       constructor. }
     rewrite fmap_insert.
     by iFrame.
   Qed.
 
-  Lemma vers_auth_update (l : loc) (ver : nat) (γ : gname) (log : gmap loc nat) :
+  Lemma vers_auth_update (l : gname) (ver : nat) (γ : gname) (log : gmap gname nat) :
     log !! l = None →
       vers_auth_own γ 1 log ==∗
         vers_auth_own γ 1 (<[l := ver]>log) ∗ vers_frag_own γ l ver.
@@ -383,26 +396,26 @@ Section cached_wf.
     by iFrame.
   Qed.
 
-  Lemma log_frag_alloc i γ value γₕ log q :
-    log !! i = Some (γ, value) →
+  Lemma log_frag_alloc i value γₕ log q :
+    log !! i = Some value →
       log_auth_own γₕ q log ==∗
-        log_auth_own γₕ q log ∗ log_frag_own γₕ i γ value.
+        log_auth_own γₕ q log ∗ log_frag_own γₕ i value.
   Proof.
     iIntros (Hlookup) "Hauth".
     iMod (own_update with "Hauth") as "[H● H◯]".
-    { apply auth_update_dfrac_alloc with (b := {[i := to_agree (γ, value)]}).
+    { apply auth_update_dfrac_alloc with (b := {[i := to_agree value]}).
       { apply _. }
       apply singleton_included_l with (i := i).
-      exists (to_agree (γ, value)). split; last done.
+      exists (to_agree value). split; last done.
       rewrite lookup_fmap Hlookup //.
     }
     by iFrame.
   Qed.
 
-  Lemma log_auth_frag_agree γₕ q log i γ value : 
+  Lemma log_auth_frag_agree γₕ q log i value : 
     log_auth_own γₕ q log -∗
-      log_frag_own γₕ i γ value -∗
-        ⌜log !! i = Some (γ, value)⌝.
+      log_frag_own γₕ i value -∗
+        ⌜log !! i = Some value⌝.
   Proof.
     iIntros "H● H◯".
     iCombine "H● H◯" gives %(_ & (y & Hlookup & [[=] | (a & b & [=<-] & [=<-] & H)]%option_included_total)%singleton_included_l & Hvalid)%auth_both_dfrac_valid_discrete.
@@ -414,7 +427,7 @@ Section cached_wf.
     rewrite -lookup_fmap /= Hvs'' //.
   Qed.
 
-  Lemma index_auth_frag_agree (γ : gname) (i : nat) (l : loc) (index : list loc) (q : Qp) : 
+  Lemma index_auth_frag_agree (γ : gname) (i : nat) (l : gname) (index : list gname) (q : Qp) : 
     index_auth_own γ q index -∗
       index_frag_own γ i l -∗
         ⌜index !! i = Some l⌝.
@@ -458,7 +471,7 @@ Section cached_wf.
     apply Hincl.
   Qed.
 
-  Lemma fmap_to_agree_included_subseteq (m m' : gmap loc (gname * list val)) :
+  Lemma fmap_to_agree_included_subseteq (m m' : gmap gname (gname * list val)) :
           (to_agree <$> m) ≼ (to_agree <$> m') → m ⊆ m'.
   Proof.
     intros Hincl. apply map_subseteq_spec.
@@ -475,7 +488,7 @@ Section cached_wf.
     by apply to_agree_included, leibniz_equiv in Hincl as <-.
   Qed.
 
-  Lemma fmap_to_agree_included_subseteq' (m m' : gmap loc nat) :
+  Lemma fmap_to_agree_included_subseteq' (m m' : gmap gname nat) :
           (to_agree <$> m) ≼ (to_agree <$> m') → m ⊆ m'.
   Proof.
     intros Hincl. apply map_subseteq_spec.
@@ -492,7 +505,7 @@ Section cached_wf.
     by apply to_agree_included, leibniz_equiv in Hincl as <-.
   Qed.
 
-  Lemma fmap_to_agree_included_subseteq'' (m m' : gmap nat loc) :
+  Lemma fmap_to_agree_included_subseteq'' (m m' : gmap nat gname) :
           (to_agree <$> m) ≼ (to_agree <$> m') → m ⊆ m'.
   Proof.
     intros Hincl. apply map_subseteq_spec.
@@ -509,7 +522,7 @@ Section cached_wf.
     by apply to_agree_included, leibniz_equiv in Hincl as <-.
   Qed.
 
-  Lemma index_auth_frag_agree' (γ : gname) (q : Qp) (index index' : list loc) : 
+  Lemma index_auth_frag_agree' (γ : gname) (q : Qp) (index index' : list gname) : 
     index_auth_own γ q index -∗
       index_frag_own' γ index' -∗
         ⌜index' `prefix_of` index⌝.
@@ -521,11 +534,11 @@ Section cached_wf.
     by repeat rewrite fmap_map_seq.
   Qed.
 
-  Definition registry γᵣ (requests : list (gname * gname * loc)) :=
+  Definition registry γᵣ (requests : list (gname * gname * gname)) :=
     own γᵣ (● map_seq O (to_agree <$> requests)).
 
   (* Fragmental ownership over a single request *)
-  Definition registered γᵣ i (γₗ γₑ : gname) (l : loc) :=
+  Definition registered γᵣ i (γₗ γₑ l : gname) :=
    own γᵣ (◯ ({[i := to_agree (γₗ, γₑ, l)]})).
 
   Lemma registry_update γₗ γₑ l γ requests : 
@@ -548,7 +561,7 @@ Section cached_wf.
   Qed.
 
   (* The authoritative view of the request registry must agree with its fragment *)
-  Lemma registry_agree γᵣ (requests : list (gname * gname * loc)) (i : nat) γₗ γₑ ver :
+  Lemma registry_agree γᵣ (requests : list (gname * gname * gname)) (i : nat) γₗ γₑ ver :
     registry γᵣ requests -∗
       registered γᵣ i γₗ γₑ ver -∗
         ⌜requests !! i = Some (γₗ, γₑ, ver)⌝.
@@ -563,19 +576,80 @@ Section cached_wf.
     rewrite -list_lookup_fmap /= -lookup_map_seq_0 Hvs'' //.
   Qed.
 
+  Definition log_tokens (log : gmap gname (list val)) : iProp Σ :=
+    [∗ map] γ ↦ _ ∈ log, token γ.
+
+  Definition read_inv (γ γᵥ γₕ γᵢ γ_val γz γ_abs : gname) (l : loc) (len : nat) : iProp Σ :=
+    ∃ (ver : nat) (log : gmap gname (list val)) (abstraction : gmap gname blk) (actual cache : list val) (γ_backup γ_backup' : gname) (backup backup' : blk) (index : list gname) (validated : gset gname) (t : nat),
+      (* Physical state of version *)
+      (l +ₗ version_off) ↦ #ver ∗
+      (* backup, consisting of boolean to indicate whether cache is valid, and the backup pointer itself *)
+      (l +ₗ backup_off) ↦{# 1/2} #(Some (Loc.blk_to_loc backup) &ₜ t) ∗
+      (* Half ownership of logical state *)
+      ghost_var γ (1/4) (γ_backup, actual) ∗
+      (* Every value of BigAtomic is unboxed *)
+      ⌜Forall val_is_unboxed actual⌝ ∗
+      (* Shared read ownership of backup *)
+      hazptr.(Managed) γz backup γ_backup len (λ (p : blk) lv γ_p, ⌜lv = actual⌝) ∗
+      (* The most recent version is associated with some other backup pointer *)
+      ⌜last index = Some γ_backup'⌝ ∗
+      (* If the backup is validated, then the cache is unlocked, the logical state is equal to the cache,
+         and the backup pointer corresponding to the most recent version is up to date *)
+      ⌜if (decide (t = 0)) then Nat.Even ver ∧ actual = cache ∧ γ_backup = γ_backup' else True⌝ ∗
+      (* Big atomic is of fixed size *)
+      ⌜length actual = len⌝ ∗ 
+      ⌜length cache = len⌝ ∗
+      (* Every logged value is of correct length *)
+      ⌜map_Forall (λ _  value, length value = len) log⌝ ∗
+      (* The version number is twice (or one greater than twice) than number of versions *) 
+      (* For every pair of (backup', cache') in the log, we have ownership of the corresponding points-to *)
+      log_tokens log ∗
+      (* The last item in the log corresponds to the currently installed backup pointer *)
+      ⌜log !! γ_backup = Some actual⌝ ∗
+      (* Store half authoritative ownership of the log in the read invariant *)
+      log_auth_own γₕ (1/2) log ∗
+      (* Auth ownership of abstraction mapping physical to logical pointers *)
+      abstraction_auth_own γ_abs 1 abstraction ∗
+      ⌜abstraction !! γ_backup = Some backup⌝ ∗
+      ⌜is_Some (abstraction !! γ_backup')⌝ ∗
+      (* The is a mapping in the index for every version *)
+      ⌜length index = S (Nat.div2 (S ver))⌝ ∗
+      (* Because the mapping from versions to log entries is injective, the index should not contain duplicates *)
+      ⌜NoDup index⌝ ∗
+      (* Moreover, every index should be less than the length of the log (to ensure every version
+         corresponds to a valid entry) *)
+      ⌜Forall (.∈ dom log) index⌝ ∗
+      (* Ownership of at least half of the index *)
+      index_auth_own γᵢ (1/4) index ∗
+      (* Ownership of at least half of the counter *)
+      mono_nat_auth_own γᵥ (1/4) ver ∗
+      (* Ownership of at least half of the physical state of the cache *)
+      (l +ₗ 2) ↦∗{# 1/2} cache ∗
+      (* If the version is even, the the value of the backup corresponding to the 
+         stores the cache. Otherwise it must not be valid *)
+      ⌜if Nat.even ver then log !! γ_backup' = Some cache else t ≠ 0⌝ ∗
+      (* If the version is even, we have full ownership of index and logical state of version *)
+      (if Nat.even ver then index_auth_own γᵢ (1/4) index ∗ mono_nat_auth_own γᵥ (1/4) ver ∗(l +ₗ 2) ↦∗{# 1/2} cache else True) ∗
+      (* Auth ownership of all pointers that have been validated *)
+      validated_auth_own γ_val 1 validated ∗
+      (* The backup pointer is in the set of validated pointer iff it has actually been validated *)
+      ⌜γ_backup ∈ validated ↔ t = 0⌝ ∗
+      (* All pointers validated have also been logged *)
+      ⌜validated ⊆ dom log⌝.
+
   Definition AU_cas (Φ : val → iProp Σ) γ (expected desired : list val) (lexp ldes : loc) dq dq' : iProp Σ :=
        AU <{ ∃∃ backup actual, value γ backup actual }>
             @ ⊤ ∖ ↑N, ∅
           <{ if bool_decide (actual = expected) then ∃ backup', value γ backup' desired else value γ backup actual,
              COMM lexp ↦∗{dq} expected ∗ ldes ↦∗{dq'} desired -∗ Φ #(bool_decide (actual = expected)) }>.
 
-  Definition cas_inv (Φ : val → iProp Σ) (γ γₑ γₗ γₜ : gname) (lexp ldes : loc) (dq dq' : dfrac) (expected desired : list val) : iProp Σ :=
-      ((lexp ↦∗{dq} expected ∗ ldes ↦∗{dq'} desired -∗ Φ #false) ∗ (∃ b : bool, ghost_var γₑ (1/2) b) ∗ ghost_var γₗ (1/2) false) (* The failing write has already been linearized and its atomic update has been consumed *)
-    ∨ (£ 1 ∗ AU_cas Φ γ expected desired lexp ldes dq dq' ∗ ghost_var γₑ (1/2) true ∗ ghost_var γₗ (1/2) true)
-    ∨ (token γₜ ∗ (∃ b : bool, ghost_var γₑ (1/2) b) ∗ ∃ b : bool, ghost_var γₗ (1/2) b).  (* The failing write has linearized and returned *)
+  Definition log_tokens (log : gmap gname (list val)) : iProp Σ :=
+    [∗ map] γ ↦ _ ∈ log, token γ.
 
-  Definition log_tokens (log : gmap loc (gname * list val)) : iProp Σ :=
-    ([∗ map] backup ↦ '(γ, vs) ∈ log, token γ ∗ backup ↦∗□ vs)%I.
+  Definition cas_inv (Φ : val → iProp Σ) (γ γₑ γₗ γₜ γ_p : gname) γd (lexp ldes : loc) (dq dq' : dfrac) (expected desired : list val) s p R size : iProp Σ :=
+      ((lexp ↦∗{dq} expected ∗ ldes ↦∗{dq'} desired -∗ Φ #false) ∗ (∃ b : bool, ghost_var γₑ (1/2) b) ∗ ghost_var γₗ (1/2) false) (* The failing write has already been linearized and its atomic update has been consumed *)
+    ∨ (£ 1 ∗ AU_cas Φ γ expected desired lexp ldes dq dq' ∗ ghost_var γₑ (1/2) true ∗ ghost_var γₗ (1/2) true ∗ Shield hazptr γd s (Validated p γ_p R size))
+    ∨ (token γₜ ∗ (∃ b : bool, ghost_var γₑ (1/2) b) ∗ ∃ b : bool, ghost_var γₗ (1/2) b).  (* The failing write has linearized and returned *)
 
   (* Lemma log_tokens_impl log l γ :
     fst <$> log !! l = Some γ → log_tokens log -∗ token γ.
@@ -587,8 +661,8 @@ Section cached_wf.
     done. 
   Qed. *)
 
-  Lemma log_tokens_impl log l γ value :
-    log !! l = Some (γ, value) → log_tokens log -∗ token γ ∗ l ↦∗□ value.
+  Lemma log_tokens_impl log l value :
+    log !! l = Some value → log_tokens log -∗ token l.
   Proof.
     iIntros (Hbound) "Hlog".
     iPoseProof (big_sepM_lookup with "Hlog") as "H /=".
@@ -596,21 +670,22 @@ Section cached_wf.
     done. 
   Qed.
 
-  Lemma log_tokens_singleton l γ value :
-    log_tokens {[ l := (γ, value) ]} ⊣⊢ token γ ∗ l ↦∗□ value.
+  Lemma log_tokens_singleton l  value :
+    log_tokens {[ l := value ]} ⊣⊢ token l.
   Proof.
     rewrite /log_tokens big_sepM_singleton //.
   Qed.
+(* 
+  Definition request_inv (γ γₗ γₑ γ_exp : gname) (lactual : loc) (actual : list val) (abstraction : gmap gname loc) : iProp Σ :=
+    ∃ lexp, ⌜abstraction !! γ_exp = Some lexp⌝ ∗
+      ghost_var γₗ (1/2) (bool_decide (lactual = lexp)) ∗
+      ∃ (Φ : val → iProp Σ) (γₜ : gname) (lexp ldes : loc) (dq dq' : dfrac) (expected desired : list val),
+        ghost_var γₑ (1/2) (bool_decide (actual = expected)) ∗
+        inv casN (cas_inv Φ γ γₑ γₗ γₜ lexp ldes dq dq' expected desired). *)
 
-  Definition request_inv γ γₗ γₑ (lactual lexp : loc) (actual : list val) (used : gset loc) : iProp Σ :=
-    ⌜lexp ∈ used⌝ ∗
-    ghost_var γₗ (1/2) (bool_decide (lactual = lexp)) ∗
-    ∃ (Φ : val → iProp Σ) (γₜ : gname) (lexp ldes : loc) (dq dq' : dfrac) (expected desired : list val),
-      ghost_var γₑ (1/2) (bool_decide (actual = expected)) ∗
-      inv casN (cas_inv Φ γ γₑ γₗ γₜ lexp ldes dq dq' expected desired).
-
-  Definition registry_inv γ lactual actual (requests : list (gname * gname * loc)) (used : gset loc) : iProp Σ :=
-    [∗ list] '(γₗ, γₑ, lexp) ∈ requests, request_inv γ γₗ γₑ lactual lexp actual used.
+  Definition registry_inv γ γ_actual lactual actual (requests : list (gname * gname * loc)) (used : gset loc) : iProp Σ :=
+    [∗ list] '(γₗ, γₑ, lexp) ∈ requests, ∃ (γ_exp : gname), 
+    request_inv γ γₗ γₑ lactual lexp actual used.
 
   Lemma registry_inv_mono γ backup expected requests used used' : 
     used ⊆ used' →
@@ -667,7 +742,7 @@ Section cached_wf.
     ∀ i j v, m !! i = Some v → m !! j = Some v → i = j.
 
   Definition read_inv (γ γᵥ γₕ γᵢ γ_val : gname) (l : loc) (len : nat) : iProp Σ :=
-    ∃ (ver : nat) (log : gmap loc (gname * list val)) (actual cache : list val) (marked_backup : val) (backup backup' : loc) (index : list loc) (validated : gset loc),
+    ∃ (ver : nat) (log : gmap loc (gname * list val)) (actual cache : list val) (marked_backup : val) (backup backup' : loc) (index : list gname) (validated : gset loc),
       (* Physical state of version *)
       l ↦ #ver ∗
       (* backup, consisting of boolean to indicate whether cache is valid, and the backup pointer itself *)
@@ -720,13 +795,13 @@ Section cached_wf.
       (* All pointers validated have also been logged *)
       ⌜validated ⊆ dom log⌝.
 
-  Definition gmap_mono (order : gmap loc nat) (loc loc' : loc) :=
+  Definition gmap_mono (order : gmap gname nat) (loc loc' : loc) :=
     ∀ i j, 
       order !! loc = Some i → 
         order !! loc' = Some j →
           i < j.
 
-  Lemma gmap_mono_alloc (l : loc) (i : nat) (order : gmap loc nat) (index : list loc) :
+  Lemma gmap_mono_alloc (l : loc) (i : nat) (order : gmap gname nat) (index : list gname) :
     l ∉ index →
       StronglySorted (gmap_mono order) index →
         StronglySorted (gmap_mono (<[l := i]>order)) index.
@@ -749,7 +824,7 @@ Section cached_wf.
           { auto. }
   Qed.
 
-  Lemma StronglySorted_subseteq (order order' : gmap loc nat) (index : list loc) :
+  Lemma StronglySorted_subseteq (order order' : gmap gname nat) (index : list gname) :
     order ⊆ order' →
       Forall (.∈ dom order) index →
         StronglySorted (gmap_mono order) index →
@@ -802,7 +877,7 @@ Section cached_wf.
   Qed.
 
   Definition cached_wf_inv (γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ : gname) (l : loc) : iProp Σ :=
-    ∃ (ver : nat) log (actual : list val) (marked_backup : val) (backup : loc) requests (vers : gmap loc nat) (index : list loc) (order : gmap loc nat) (idx : nat),
+    ∃ (ver : nat) log (actual : list val) (marked_backup : val) (backup : loc) requests (vers : gmap gname nat) (index : list gname) (order : gmap gname nat) (idx : nat),
       (* Ownership of remaining quarter of logical counter *)
       mono_nat_auth_own γᵥ (1/2) ver ∗
       (* Ownership of the backup location *)
@@ -994,7 +1069,7 @@ Section cached_wf.
     repeat rewrite -lookup_fmap //.
   Qed.
 
-  Lemma index_auth_auth_agree γₕ p q (index index' : list loc) :
+  Lemma index_auth_auth_agree γₕ p q (index index' : list gname) :
     index_auth_own γₕ p index -∗
       index_auth_own γₕ q index'  -∗
         ⌜index = index'⌝.
@@ -1008,7 +1083,7 @@ Section cached_wf.
     do 2 rewrite -lookup_map_seq_0 -lookup_fmap fmap_map_seq //.
   Qed.
 
-  Lemma vers_auth_auth_agree γₕ p q (log log' : gmap loc nat) :
+  Lemma vers_auth_auth_agree γₕ p q (log log' : gmap gname nat) :
     vers_auth_own γₕ p log -∗
       vers_auth_own γₕ q log'  -∗
         ⌜log = log'⌝.
@@ -2033,8 +2108,8 @@ Qed.
   Proof. apply _. Qed.
 
   Lemma wp_try_validate (γ γᵥ γₕ γᵣ γᵢ γ_val γ_vers γₒ γₚ' : gname) (l ldes ldes' : loc) (dq : dfrac)
-                        (expected desired : list val) (ver ver₂ idx₂ : nat) (index₂ : list loc)
-                        (order₂ : gmap loc nat) :
+                        (expected desired : list val) (ver ver₂ idx₂ : nat) (index₂ : list gname)
+                        (order₂ : gmap gname nat) :
     length expected > 0 → length expected = length desired → ver ≤ ver₂ → length index₂ = S (Nat.div2 (S ver₂)) →
       StronglySorted (gmap_mono order₂) index₂ → Forall (.∈ dom order₂) index₂ → map_Forall (λ _ idx, idx ≤ idx₂) order₂ →
         order₂ !! ldes' = None →
@@ -2340,8 +2415,8 @@ Qed.
     (log₁ : gmap loc (gname * list val))
     (backup backup' copy : loc)
     (requests₁ : list (gname * gname * loc))
-    (vers₁ order₁ : gmap loc nat)
-    (index₁ : list loc)
+    (vers₁ order₁ : gmap gname nat)
+    (index₁ : list gname)
     (validated : gset loc)
     (idx₁ ver ver₁ ver' i : nat)
     (γₚ γₑ γₗ γₜ : gname) :

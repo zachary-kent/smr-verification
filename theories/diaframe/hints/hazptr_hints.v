@@ -59,7 +59,7 @@ Proof.
   iSpecialize ("CloseSh" with "[$H5 $H4 //]"). done.
 Qed.
 
-Global Instance hp_shield_managed_agree γd s p γ_p1 γ_p2 R1 R2 size_i1 size_i2:
+Global Instance s γd s p γ_p1 γ_p2 R1 R2 size_i1 size_i2:
   MergablePersist (▷ hazptr.(Managed) γd p γ_p2 size_i2 R2) (λ p' Pin Pout,
   TCAnd (TCEq Pin (hazptr.(Shield) γd s (Validated p γ_p1 R1 size_i1))) $
       TCEq Pout (▷ ⌜ γ_p1 = γ_p2 ⌝))%I.

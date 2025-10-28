@@ -127,6 +127,8 @@ Definition shield_managed_agree' : Prop :=
   Managed γd p γ_p2 size_i2 R2 -∗
   ⌜γ_p1 = γ_p2⌝.
 
+Check shield_managed_agree'.
+
 Definition shield_unset_spec' : Prop :=
   ∀ E γd d s s_st,
   ↑(mgmtN N) ⊆ E →
