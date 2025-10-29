@@ -87,6 +87,21 @@ Definition shield_protect : val :=
     let: "ptr" := !"atomic" in
     shield_protect_loop "shield" "atomic" "ptr".
 
+Definition shield_protect_tagged_loop : val :=
+  rec: "loop" "shield" "atomic" "ptr" :=
+    shield_set "shield" (untag "ptr");;
+    (* SC fence *)
+    let: "ptr'" := !"atomic" in
+    if: "ptr" = "ptr'" then
+      "ptr'"
+    else
+      "loop" "shield" "atomic" "ptr'".
+
+Definition shield_protect_tagged : val :=
+  λ: "shield" "atomic",
+    let: "ptr" := !"atomic" in
+    shield_protect_tagged_loop "shield" "atomic" "ptr".
+
 Definition shield_unset : val :=
   λ: "shield",
     let: "slot" := !("shield" +ₗ #shieldSlot) in

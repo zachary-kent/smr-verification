@@ -28,7 +28,8 @@ Variables
   (shield_set : val)
   (shield_protect : val)
   (shield_unset : val)
-  (shield_drop : val).
+  (shield_drop : val)
+  (shield_protect_tagged : val).
 Variables
   (IsHazardDomain : DomainT Σ N)
   (Managed : ManagedT Σ N)
@@ -102,6 +103,25 @@ Definition shield_protect_spec' : Prop :=
         Shield γd s Deactivated |
       RET #(oblk_to_lit pa) }>>.
 
+(* [shield_protect_tagged] works on pointers that may have tag bits.
+   It stores the untagged pointer in the hazard slot, but compares the
+   full tagged value for stability. This allows protection of tagged
+   pointers without separate set+validate steps.
+   This version requires a non-null pointer. *)
+Definition shield_protect_tagged_spec' : Prop :=
+  ∀ E γd d s s_st (a : loc) dq,
+  ↑(mgmtN N) ⊆ E →
+  IsHazardDomain γd d -∗
+  Shield γd s s_st -∗
+  <<{ ∀∀ (p : blk) (t : nat) γ_p size_i R,
+      a ↦{dq} #(Some (Loc.blk_to_loc p) &ₜ t) ∗
+      ▷ Managed γd p γ_p size_i R }>>
+    shield_protect_tagged #s #a @ E,∅,↑(mgmtN N)
+  <<{ a ↦{dq} #(Some (Loc.blk_to_loc p) &ₜ t) ∗
+      Managed γd p γ_p size_i R ∗
+      Shield γd s (Validated p γ_p R size_i) |
+      RET #(Some (Loc.blk_to_loc p) &ₜ t) }>>.
+
 (* Access the protected pointer. *)
 Definition shield_acc' : Prop :=
   ∀ E γd R s p γ_p size_i,
@@ -171,6 +191,7 @@ Record hazard_pointer_code : Type := HazardPointerCode {
   shield_new : val;
   shield_set : val;
   shield_protect : val;
+  shield_protect_tagged : val;
   shield_unset : val;
   shield_drop : val;
 }.
@@ -190,6 +211,7 @@ Record hazard_pointer_spec {Σ} `{!heapGS Σ} {N : namespace} : Type := HazardPo
   shield_set_spec : shield_set_spec' N hazard_pointer_spec_code.(shield_set) IsHazardDomain Shield;
   shield_validate : shield_validate' N IsHazardDomain Managed Shield;
   shield_protect_spec : shield_protect_spec' N hazard_pointer_spec_code.(shield_protect) IsHazardDomain Managed Shield;
+  shield_protect_tagged_spec : shield_protect_tagged_spec' N hazard_pointer_spec_code.(shield_protect_tagged) IsHazardDomain Managed Shield;
   shield_unset_spec : shield_unset_spec' N hazard_pointer_spec_code.(shield_unset) IsHazardDomain Shield;
   shield_drop_spec : shield_drop_spec' N hazard_pointer_spec_code.(shield_drop) IsHazardDomain Shield;
   shield_acc : shield_acc' N Shield;

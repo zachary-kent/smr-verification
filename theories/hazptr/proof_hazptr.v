@@ -132,6 +132,8 @@ Definition HazardDomain γsb γtok γinfo γdata γptrs γU γR γV (d hBag rSet
     ⌜∀ p i, ptrs !! p = Some i → ∃ z, info !! i = Some z ∧ z.1.(addr) = p ⌝
   .
 
+Check HazardDomain.
+
 Definition hazptrInvN := mgmtN N .@ "inv".
 
 Definition IsHazardDomain γz (d : loc) : iProp :=
@@ -924,6 +926,7 @@ Proof.
     WP slot_set #slot #(oblk_to_lit p) @ E {{ v, Φ v }}
   )%I as "slot_set".
   { iIntros "Shs↦ †Sh ShSlot ●TI HΦ".
+    Check sbs.(slot_set_spec).
     awp_apply (sbs.(slot_set_spec) with "ShSlot") without "HΦ".
     iInv "IHD" as (??? hmap1 slist1 rs1)
       "(>M & >datM & >coM & >B & >RS & >●Q & >●X & >Reg & Ret & >%Hdom & >%HInfo)".
@@ -1209,6 +1212,41 @@ Proof.
     iMod ("Abort" with "[$a↦ $pa2↦]") as "AU".
     iModIntro. wp_pures. rewrite bool_decide_eq_false_2 //. wp_pures.
     iApply ("IH" with "Sh AU").
+Qed.
+
+(* Check shield_protect_tagged_spec'. *)
+
+Lemma shield_protect_tagged_spec :
+  shield_protect_tagged_spec' N shield_protect_tagged IsHazardDomain Managed Shield.
+Proof.
+  intros ????????.
+  iIntros "#IHD Sh" (Φ) "AU".
+  wp_lam. wp_pures.
+
+  wp_bind (! _)%E. iMod "AU" as (p1 t1 γ size R) "[[a↦ p1↦] [Abort _]]".
+  wp_load. iMod ("Abort" with "[$a↦ $p1↦]") as "AU". clear γ size R.
+  iModIntro. wp_let.
+
+  iLöb as "IH" forall (p1 t1 s_st). wp_lam. wp_pures.
+  (* Reduce the [untag] argument so [shield_set_spec] matches its literal form. *)
+  wp_pures.
+  change #(Some (Loc.blk_to_loc p1) &ₜ 0) with #(oblk_to_lit (Some p1)).
+  wp_apply (shield_set_spec with "IHD [$Sh]") as "Sh"; [solve_ndisj..|].
+  wp_seq.
+
+  wp_bind (! _)%E. iMod "AU" as (p2 t2 γ size R) "[[a↦ p2↦] CloseAU]".
+  case (decide ((p1, t1) = (p2, t2))) as [Heq|NE]; [injection Heq as -> ->|]; wp_load.
+  - iMod (shield_validate with "IHD p2↦ Sh") as "[p2↦ Sh]"; [solve_ndisj|].
+    iDestruct "CloseAU" as "[_ Commit]".
+    iMod ("Commit" with "[$a↦ $p2↦ $Sh]") as "HΦ".
+    iModIntro. wp_pures.
+    rewrite bool_decide_eq_true_2 //.
+    wp_pures. iApply "HΦ".
+  - iDestruct "CloseAU" as "[Abort _]".
+    iMod ("Abort" with "[$a↦ $p2↦]") as "AU".
+    iModIntro. wp_pures. rewrite bool_decide_eq_false_2; last first.
+    { naive_solver. }
+    wp_pures. iApply ("IH" with "Sh AU").
 Qed.
 
 Lemma shield_acc :

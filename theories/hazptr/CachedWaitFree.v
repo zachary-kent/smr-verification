@@ -148,6 +148,8 @@ Section cached_wf.
 
   Variable (hazptr : hazard_pointer_spec Σ hazptrN).
 
+  Variable (hazptr_code : hazard_pointer_code).
+
   Lemma wp_array_equal (l l' : loc) (dq dq' : dfrac) (vs vs' : list val) :
     length vs = length vs' → Forall2 vals_compare_safe vs vs' →
     {{{ l ↦∗{dq} vs ∗ l' ↦∗{dq'} vs' }}}
@@ -595,7 +597,7 @@ Section cached_wf.
       ⌜last index = Some γ_backup'⌝ ∗
       (* If the backup is validated, then the cache is unlocked, the logical state is equal to the cache,
          and the backup pointer corresponding to the most recent version is up to date *)
-      ⌜if (decide (t = 0)) then Nat.Even ver ∧ actual = cache ∧ γ_backup = γ_backup' else True⌝ ∗
+      ⌜if bool_decide (t = 0) then Nat.Even ver ∧ actual = cache ∧ γ_backup = γ_backup' else True⌝ ∗
       (* Big atomic is of fixed size *)
       ⌜length actual = len⌝ ∗ 
       ⌜length cache = len⌝ ∗
@@ -624,12 +626,12 @@ Section cached_wf.
       (* Ownership of at least half of the counter *)
       mono_nat_auth_own γᵥ (1/4) ver ∗
       (* Ownership of at least half of the physical state of the cache *)
-      (l +ₗ 2) ↦∗{# 1/2} cache ∗
+      (l +ₗ cache_off) ↦∗{# 1/2} cache ∗
       (* If the version is even, the the value of the backup corresponding to the 
          stores the cache. Otherwise it must not be valid *)
       ⌜if Nat.even ver then log !! γ_backup' = Some cache else t ≠ 0⌝ ∗
       (* If the version is even, we have full ownership of index and logical state of version *)
-      (if Nat.even ver then index_auth_own γᵢ (1/4) index ∗ mono_nat_auth_own γᵥ (1/4) ver ∗(l +ₗ 2) ↦∗{# 1/2} cache else True) ∗
+      (if Nat.even ver then index_auth_own γᵢ (1/4) index ∗ mono_nat_auth_own γᵥ (1/4) ver ∗(l +ₗ cache_off) ↦∗{# 1/2} cache else True) ∗
       (* Auth ownership of all pointers that have been validated *)
       validated_auth_own γ_val 1 validated ∗
       (* The backup pointer is in the set of validated pointer iff it has actually been validated *)
@@ -957,7 +959,7 @@ Section cached_wf.
         (* The current version is at least [ver] *)
         mono_nat_lb_own γᵥ ver -∗
           {{{ (dst +ₗ i) ↦∗ vdst }}}
-            array_copy_to #(dst +ₗ i) #(src +ₗ 2 +ₗ i) #(n - i)
+            array_copy_to #(dst +ₗ i) #(src +ₗ cache_off +ₗ i) #(n - i)
           {{{ vers vdst', RET #(); 
               (* the destination array contains some values [vdst'] *)
               (dst +ₗ i) ↦∗ vdst' ∗
@@ -1134,7 +1136,7 @@ Section cached_wf.
         (* The current version is at least [ver] *)
         mono_nat_lb_own γᵥ ver -∗
           {{{ dst ↦∗ vdst }}}
-            array_copy_to #dst #(src +ₗ 2) #n
+            array_copy_to #dst #(src +ₗ cache_off) #n
           {{{ vers vdst', RET #(); 
               (* the destination array contains some values [vdst'] *)
               dst ↦∗ vdst' ∗
@@ -1158,7 +1160,7 @@ Section cached_wf.
                       ⌜vs !! i = Some v⌝ ))}}}.
   Proof.
      iIntros "%Hvdst #Hinv #Hlb !> %Φ Hdst HΦ".
-     rewrite -(Loc.add_0 (src +ₗ 2)).
+     rewrite -(Loc.add_0 (src +ₗ cache_off)).
      rewrite -(Loc.add_0 dst).
      replace (Z.of_nat n) with (n - 0)%Z by lia.
      change 0%Z with (Z.of_nat O).
@@ -1173,7 +1175,7 @@ Section cached_wf.
         (* The current version is at least [ver] *)
         mono_nat_lb_own γᵥ ver -∗
           {{{ True }}}
-            array_clone #(src +ₗ 2) #n
+            array_clone #(src +ₗ cache_off) #n
           {{{ vers vdst (dst : loc), RET #dst; 
               (* the destination array contains some values [vdst'] *)
               dst ↦∗ vdst ∗
@@ -1579,32 +1581,49 @@ Lemma gmap_injective_insert `{Countable K, Countable V} (k : K) (v : V) (m : gma
     | _ => None
     end.
 
-  Lemma read'_spec (γ γᵥ γₕ γᵢ γ_val γz γ_abs : gname) (l : loc) (n : nat) :
+  From smr.program_logic Require Import atomic.
+  From smr.lang Require Import proofmode notation.
+
+From iris.algebra Require Import agree.
+From iris.base_logic.lib Require Import invariants ghost_var.
+From smr.program_logic Require Import atomic.
+From smr.lang Require Import proofmode notation.
+From iris.prelude Require Import options.
+
+From smr Require Import helpers hazptr.spec_hazptr hazptr.spec_stack hazptr.code_treiber.
+
+
+  Context (DISJN : hazptrN ## readN).
+
+
+  Lemma read'_spec (γ γᵥ γₕ γᵢ γ_val γz γ_abs : gname) (l d : loc) (n : nat) :
     n > 0 →
       inv readN (read_inv γ γᵥ γₕ γᵢ γ_val γz γ_abs l n) -∗
-        <<{ ∀∀ γ_backup vs, value γ γ_backup vs  }>> 
-          read' n #l @ ↑readN
-        <<{ ∃∃ (t : nat) (copy : loc) (backup : blk) (ver : nat), value γ γ_backup vs | 
-            RET (#copy, #(Some (Loc.blk_to_loc backup) &ₜ t), #ver)%V; 
-            copy ↦∗ vs ∗ ⌜Forall val_is_unboxed vs⌝ ∗ ⌜length vs = n⌝ ∗ log_frag_own γₕ γ_backup vs ∗ mono_nat_lb_own γᵥ ver ∗ ((⌜t = 0⌝ ∗ validated_frag_own γ_val γ_backup ∗ ∃ ver', mono_nat_lb_own γᵥ ver' ∗ ⌜ver ≤ ver'⌝ ∗ index_frag_own γᵢ (Nat.div2 ver') γ_backup) ∨ ⌜t ≠ 0⌝) }>>.
+        (l +ₗ domain_off) ↦□ #d -∗ 
+          hazptr.(IsHazardDomain) γz d -∗
+            <<{ ∀∀ γ_backup vs, value γ γ_backup vs  }>> 
+              read hazptr n #l @ ↑readN
+            <<{ ∃∃ (t : nat) (copy : loc) (backup : blk) (ver : nat), value γ γ_backup vs | 
+                RET #copy; copy ↦∗ vs ∗ ⌜Forall val_is_unboxed vs⌝ ∗ ⌜length vs = n⌝ }>>.
   Proof.
-    iIntros (Hpos) "#Hinv %Φ AU".
-    wp_rec.
+    iIntros (Hpos) "#Hinv #Hd #Hd_domain %Φ AU".
+    wp_rec. wp_pures. rewrite Loc.add_0.
     wp_bind (! _)%E.
-    iInv readN as "(%ver & %log & %abstraction & %actual & %cache & %γ_backup & %γ_backup' & %backup & %backup' & %index & %validated & %t & >Hver & >Hbackup_ptr & >Hγ & >%Hunboxed & >Hbackup_managed & >%Hindex & >%Htag & >%Hlenactual & >%Hlencache & >%Hloglen & Hlog & >%Hlogged & >●Hlog & >●Hγ_abs & >%Habs_backup & >%Habs_backup' & >%Hlenᵢ & >%Hnodup & >%Hrange & >●Hγᵢ & >●Hγᵥ & >Hcache & >%Hcons & Hlock & >●Hγ_val & >%Hvalidated_iff & >%Hvalidated_sub & >%Hdom_eq)" "Hcl".
+    iInv readN as "(%ver & %log & %abstraction & %actual & %cache & %γ_backup & %γ_backup' & %backup & %backup' & %index & %validated & %t & >Hver & >Hbackup_ptr & >Hγ & >%Hunboxed & Hbackup_managed & >%Hindex & >%Htag & >%Hlenactual & >%Hlencache & >%Hloglen & Hlog & >%Hlogged & >●Hlog & >●Hγ_abs & >%Habs_backup & >%Habs_backup' & >%Hlenᵢ & >%Hnodup & >%Hrange & >●Hγᵢ & >●Hγᵥ & >Hcache & >%Hcons & Hlock & >●Hγ_val & >%Hvalidated_iff & >%Hvalidated_sub & >%Hdom_eq)" "Hcl".
+    rewrite Loc.add_0.
     wp_load.
     iPoseProof (mono_nat_lb_own_get with "●Hγᵥ") as "#Hlb".
     eapply backup_logged in Hrange as Hbackup_logged; last done.
-    destruct Hbackup_logged as [[γₜ backup'vs] Hbackup'vs].
-    iMod (log_frag_alloc backup' with "●Hlog") as "[●Hlog #◯Hlog]".
+    destruct Hbackup_logged as [backup'vs Hbackup'vs].
+    iMod (log_frag_alloc γ_backup' with "●Hlog") as "[●Hlog #◯Hlog]".
     { eassumption. }
     iMod (index_frag_alloc with "●Hγᵢ") as "[●Hγᵢ #◯Hγᵢ]".
     { by rewrite last_lookup Hlenᵢ in Hindex. }
     iMod ("Hcl" with "[-AU]") as "_".
-    { rewrite /cached_wf_inv.
-      iExists ver, log, actual, cache, marked_backup, backup, backup', index.
-      iFrame "∗ # %". }
-    iModIntro.
+    {
+      iExists ver, log, abstraction, actual, cache, γ_backup, γ_backup', backup, backup', index, validated, t.
+      rewrite Loc.add_0. iFrame "∗ # %". }
+    iModIntro. wp_pures.
     wp_smart_apply (wp_array_clone_wk with "[//] [//] [//]").
     { done. }
     iIntros (vers vdst dst) "(Hdst & %Hlen' & %Hsorted & %Hbound & #Hcons)".
@@ -1613,18 +1632,41 @@ Lemma gmap_injective_insert `{Countable K, Countable V} (k : K) (v : V) (m : gma
     iIntros (vs p) "Hp".
     wp_pures.
     wp_bind (! _)%E.
-    iInv readN as "(%ver' & %log' & %abstraction' & %actual' & %cache' & %γ_backup₁ & %γ_backup₁' & %backup₁ & %backup₁' & %index' & %validated₁ & %t' & >Hver & >Hbackup & >Hγ & >%Hunboxed₁ & >#□Hbackup₁ & >%Hindex' & >%Hvalidated' & >%Hlenactual' & >%Hlencache' & >%Hloglen' & Hlog & >%Hlogged' & >●Hlog & >%Hlenᵢ' & >%Hnodup' & >%Hrange' & >●Hγᵢ & >●Hγᵥ & >Hcache & >%Hcons' & Hlock & >●Hγ_val & >%Hvalagree₁ & >%Hvaldom₁ & >%Habsagree₁ & >%Habsdom₁)" "Hcl".
+    iInv readN as "(%ver₁ & %log₁ & %abstraction₁ & %actual₁ & %cache₁ & %γ_backup₁ & %γ_backup₁' & %backup₁ & %backup₁' & %index₁ & %validated₁ & %t₁ & >Hver & >Hbackup_ptr & >Hγ & >%Hunboxed₁ & Hbackup_managed₁ & >%Hindex₁ & >%Htag₁ & >%Hlenactual₁ & >%Hlencache₁ & >%Hloglen₁ & Hlog & >%Hlogged₁ & >●Hlog & >●Hγ_abs & >%Habs_backup₁ & >%Habs_backup'₁ & >%Hlenᵢ₁ & >%Hnodup₁ & >%Hrange₁ & >●Hγᵢ & >●Hγᵥ & >Hcache & >%Hcons₁ & Hlock & >●Hγ_val & >%Hvalidated_iff₁ & >%Hvalidated_sub₁ & >%Hdom_eq₁)" "Hcl".
     wp_load.
-    destruct Hvalidated' as [-> | (-> & HEven & <- & <-)].
-    - iMod ("Hcl" with "[-AU Hdst Hp]") as "_".
-      { rewrite /cached_wf_inv.
-        iExists ver', log', abstraction', actual', cache', γ_backup₁, γ_backup₁', backup₁, backup₁', index', validated₁, t'.
-        iFrame "∗ # %". auto. }
+    destruct (decide (t₁ = 0)) as [-> | Hinvalid₁]; first last.
+    - assert (γ_backup₁ ∉ validated₁) as Hinvalidated₁ by naive_solver.
+      iMod ("Hcl" with "[-AU Hdst Hp]") as "_".
+      { iExists ver₁, log₁, abstraction₁, actual₁, cache₁, γ_backup₁, γ_backup₁', backup₁, backup₁', index₁, validated₁, t₁.
+        iFrame "∗ # %". }
       iModIntro.
       rewrite /is_valid.
       wp_pures.
+      rewrite bool_decide_eq_false_2; last lia.
+      wp_pures.
       wp_bind (! _)%E.
-      iInv readN as "(%ver₂ & %log₂ & %abstraction₂ & %actual₂ & %cache₂ & %γ_backup₂ & %γ_backup₂' & %backup₂ & %backup₂' & %index₂ & %validated₂ & %t₂ & >Hver & >Hbackup & >Hγ & >%Hunboxed₂ & >#□Hbackup₂ & >%Hindex₂ & >%Hvalidated₂ & >%Hlenactual₂ & >%Hlencache₂ & >%Hloglen₂ & Hlog & >%Hlogged₂ & >●Hlog & >%Hlenᵢ₂ & >%Hnodup₂ & >%Hrange₂ & >●Hγᵢ & >●Hγᵥ & >Hcache & >%Hcons₂ & Hlock & >●Hγ_val & >%Hvalagree₂ & >%Hvaldom₂ & >%Habsagree₂ & >%Habsdom₂)" "Hcl".
+      wp_load.
+      wp_pures.
+      wp_apply (hazptr.(shield_new_spec) with "[//] [//]") as (s) "S".
+      { set_solver. }
+      wp_pures.
+      awp_apply (hazptr.(shield_protect_spec) with "[//] S").
+      { set_solver. }
+      rewrite /atomic_acc.
+      iInv readN as "(%ver₂ & %log₂ & %abstraction₂ & %actual₂ & %cache₂ & %γ_backup₂ & %γ_backup₂' & %backup₂ & %backup₂' & %index₂ & %validated₂ & %t₂ & >Hver & >Hbackup_ptr & >Hγ & >%Hunboxed₂ & Hbackup_managed₂ & >%Hindex₂ & >%Htag₂ & >%Hlenactual₂ & >%Hlencache₂ & >%Hloglen₂ & Hlog & >%Hlogged₂ & >●Hlog & >●Hγ_abs & >%Habs_backup₂ & >%Habs_backup'₂ & >%Hlenᵢ₂ & >%Hnodup₂ & >%Hrange₂ & >●Hγᵢ & >●Hγᵥ & >Hcache & >%Hcons₂ & Hlock & >●Hγ_val & >%Hvalidated_iff₂ & >%Hvalidated_sub₂ & >%Hdom_eq₂)" "Hcl".
+      iFrame. Set Printing Coercions. iExists (Some backup₂ &ₜ t₂).
+
+      iAaccIntro with "[]".
+      { instantiate (1 := [tele_arg None; inhabitant; inhabitant; inhabitant]).
+        simpl.
+
+
+      }
+
+       [solve_ndisj|].
+      { done. }
+       as (s) "S"; [solve_ndisj|].
+      iInv readN as "(%ver₂ & %log₂ & %abstraction₂ & %actual₂ & %cache₂ & %γ_backup₂ & %γ_backup₂' & %backup₂ & %backup₂' & %index₂ & %validated₂ & %t₂ & >Hver & >Hbackup_ptr & >Hγ & >%Hunboxed₂ & Hbackup_managed₂ & >%Hindex₂ & >%Htag₂ & >%Hlenactual₂ & >%Hlencache₂ & >%Hloglen₂ & Hlog & >%Hlogged₂ & >●Hlog & >●Hγ_abs & >%Habs_backup₂ & >%Habs_backup'₂ & >%Hlenᵢ₂ & >%Hnodup₂ & >%Hrange₂ & >●Hγᵢ & >●Hγᵥ & >Hcache & >%Hcons₂ & Hlock & >●Hγ_val & >%Hvalidated_iff₂ & >%Hvalidated_sub₂ & >%Hdom_eq₂)" "Hcl".
       wp_load.
       pose proof Hlogged₂ as Hlogged₂'.
       rewrite -lookup_fmap lookup_fmap_Some in Hlogged₂'.
@@ -1792,20 +1834,20 @@ Lemma gmap_injective_insert `{Countable K, Countable V} (k : K) (v : V) (m : gma
         auto.
       + iMod ("Hcl" with "[-AU Hdst Hp]") as "_".
         { rewrite /cached_wf_inv.
-          iExists ver', log', actual', actual', (InjRV #backup₁), backup₁, backup₁, index'.
+          iExists ver', log', abstraction', actual', actual', γ_backup₁, γ_backup₁, backup₁, backup₁, index', validated₁, t'.
           iFrame "∗ # %". by iRight. }
         iModIntro.
         rewrite /is_valid.
         wp_pures.
         wp_bind (Resolve _ _ _)%E.
-        iInv readN as "(%ver₂ & %log₂ & %actual₂ & %cache₂ & %marked_backup₂ & %backup₂ & %backup₂' & %index₂ & %validated₂ & >Hver & >Hbackup & >Hγ & >%Hunboxed₂ & >#□Hbackup₂ & >%Hindex₂ & >%Hvalidated₂ & >%Hlenactual₂ & >%Hlencache₂ & >%Hloglen₂ & Hlog & >%Hlogged₂ & >●Hlog & >%Hlenᵢ₂ & >%Hnodup₂ & >%Hrange₂ & >●Hγᵢ & >●Hγᵥ & >Hcache & >%Hcons₂ & Hlock & >●Hγ_val & >%Hvalagree₂ & >%Hvaldom₂)" "Hcl".
+        iInv readN as "(%ver₂ & %log₂ & %abstraction₂ & %actual₂ & %cache₂ & %γ_backup₂ & %γ_backup₂' & %backup₂ & %backup₂' & %index₂ & %validated₂ & %t₂ & >Hver & >Hbackup & >Hγ & >%Hunboxed₂ & >#□Hbackup₂ & >%Hindex₂ & >%Hvalidated₂ & >%Hlenactual₂ & >%Hlencache₂ & >%Hloglen₂ & Hlog & >%Hlogged₂ & >●Hlog & >%Hlenᵢ₂ & >%Hnodup₂ & >%Hrange₂ & >●Hγᵢ & >●Hγᵥ & >Hcache & >%Hcons₂ & Hlock & >●Hγ_val & >%Hvalagree₂ & >%Hvaldom₂ & >%Habsagree₂ & >%Habsdom₂)" "Hcl".
         wp_apply (wp_resolve with "Hp").
         { done. }
         wp_load.
         iIntros "!> %pvs' -> Hp".
         iMod ("Hcl" with "[-AU Hdst]") as "_".
         { rewrite /cached_wf_inv.
-          iExists ver₂, log₂, actual₂, cache₂, marked_backup₂, backup₂, backup₂', index₂.
+          iExists ver₂, log₂, abstraction₂, actual₂, cache₂, γ_backup₂, γ_backup₂', backup₂, backup₂', index₂, validated₂, t₂.
           iFrame "∗ # %". }
         iModIntro.
         simpl in Hextract. simplify_eq.
@@ -1813,7 +1855,7 @@ Lemma gmap_injective_insert `{Countable K, Countable V} (k : K) (v : V) (m : gma
         rewrite bool_decide_eq_false_2; last naive_solver.
         wp_pures.
         wp_bind (! _)%E.
-        iInv readN as "(%ver₃ & %log₃ & %actual₃ & %cache₃ & %marked_backup₃ & %backup₃ & %backup₃' & %index₃ & %validated₃ & >Hver & >Hbackup & >Hγ & >%Hunboxed₃ & >#□Hbackup₃ & >%Hindex₃ & >%Hvalidated₃ & >%Hlenactual₃ & >%Hlencache₃ & >%Hloglen₃ & Hlog & >%Hlogged₃ & >●Hlog & >%Hlenᵢ₃ & >%Hnodup₃ & >%Hrange₃ & >●Hγᵢ & >●Hγᵥ & >Hcache & >%Hcons₃ & Hlock & >●Hγ_val & >%Hvalagree₃ & >%Hvaldom₃)" "Hcl".
+        iInv readN as "(%ver₃ & %log₃ & %abstraction₃ & %actual₃ & %cache₃ & %γ_backup₃ & %γ_backup₃' & %backup₃ & %backup₃' & %index₃ & %validated₃ & %t₃ & >Hver & >Hbackup & >Hγ & >%Hunboxed₃ & >#□Hbackup₃ & >%Hindex₃ & >%Hvalidated₃ & >%Hlenactual₃ & >%Hlencache₃ & >%Hloglen₃ & Hlog & >%Hlogged₃ & >●Hlog & >●Hγ_abs & >%Habs_backup₃ & >%Habs_backup₃' & >%Hlenᵢ₃ & >%Hnodup₃ & >%Hrange₃ & >●Hγᵢ & >●Hγᵥ & >Hcache & >%Hcons₃ & Hlock & >●Hγ_val & >%Hvalagree₃ & >%Hvaldom₃ & >%Habsagree₃ & >%Habsdom₃)" "Hcl".
         wp_load.
         pose proof Hlogged₃ as Hlogged₃'.
         rewrite -lookup_fmap lookup_fmap_Some in Hlogged₃'.
@@ -1831,7 +1873,7 @@ Lemma gmap_injective_insert `{Countable K, Countable V} (k : K) (v : V) (m : gma
         destruct Hvalidated₃ as [-> | (-> & HEven₃ & <- & <-)].
         * iMod ("Hcl" with "[-HΦ Hdst]") as "_".
           { rewrite /cached_wf_inv.
-            iExists ver₃, log₃, actual₃, cache₃, (InjLV #backup₃), backup₃, backup₃', index₃.
+            iExists ver₃, log₃, abstraction₃, actual₃, cache₃, γ_backup₃, γ_backup₃', backup₃, backup₃', index₃, validated₃, t₃.
             iFrame "∗ # %". auto. }
           iModIntro.
           rewrite /strip.
@@ -1852,7 +1894,7 @@ Lemma gmap_injective_insert `{Countable K, Countable V} (k : K) (v : V) (m : gma
           { done. } 
           iMod ("Hcl" with "[-HΦ Hdst]") as "_".
           { rewrite /cached_wf_inv.
-            iExists ver₃, log₃, actual₃, actual₃, (InjRV #backup₃), backup₃, backup₃, index₃.
+            iExists ver₃, log₃, abstraction₃, actual₃, actual₃, γ_backup₃, γ_backup₃, backup₃, backup₃, index₃, validated₃, t₃.
             iFrame "∗ # %". iRight. auto. }
           iModIntro.
           rewrite /strip.

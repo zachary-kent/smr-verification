@@ -102,6 +102,8 @@ Proof.
   iModIntro. iApply "HΦ". iFrame "∗". exfr.
 Qed.
 
+Check tstack_push.
+
 Lemma tstack_push_spec :
   stack_push_spec' treiberN hazptrN tstack_push TStack IsTStack.
 Proof using All.
@@ -207,7 +209,7 @@ Proof using All.
   iDestruct "Info_h1'" as (x2 n2) "[-> _]".
   rewrite /node_info.
 
-  (* iCombine "Info_h1 Info_h1'" gives %[= <- <-]%to_agree_op_inv_L. *)
+  iCombine "Info_h1 Info_h1'" gives %[= <- <-]%to_agree_op_inv_L.
   iClear "Info_h1'". injection EQ as [= <-].
 
   wp_pures. wp_bind (CmpXchg _ _ _).
