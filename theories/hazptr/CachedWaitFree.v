@@ -1532,7 +1532,7 @@ Lemma gmap_injective_insert `{Countable K, Countable V} (k : K) (v : V) (m : gma
       by rewrite -not_true_iff_false Z.odd_spec -Odd_inj in H.
   Qed.
 
-  Lemma wp_array_copy_to_persistent (dst : loc) (src : blk) vdst vsrc γz s γ_src (i : nat) :
+  Lemma wp_array_copy_to_persistent_off (dst : loc) (src : blk) vdst vsrc γz s γ_src (i : nat) :
     i + length vdst = length vsrc →
       {{{ dst ↦∗ vdst ∗ Shield hazptr γz s (Validated src γ_src (λ (_ : blk) (lv : list val) (_ : gname), ⌜lv = vsrc⌝) (length vsrc)) }}}
         array_copy_to #dst #(src +ₗ i) #(length vdst)
@@ -1565,53 +1565,18 @@ Lemma gmap_injective_insert `{Countable K, Countable V} (k : K) (v : V) (m : gma
       f_equal. lia. }
     done.
   Qed.
-    
-    list_solver.
 
-    change #(Some (dst +ₗ 1%nat) &ₜ 0) with #(dst +ₗ 1%nat).
-    change #(Some (src +ₗ (i + 1)%nat) &ₜ 0)%V with #(src +ₗ (i + 1)%nat)%V.
-    iSpecialize ("IH" $! vdst (dst +ₗ i) (S i)).
-    wo_smart_apply "IH".
-    wp_apply "HΦ".
-    iIntros (Hlen Φ).
-    iIntros (Hvdst Hvsrc Φ) "[Hdst Hsrc] HΦ".
-
-
-    iInduction vdst as [|v1 vdst] "IH" forall (n dst src vsrc Hvdst Hvsrc);
-      destruct vsrc as [|v2 vsrc]; simplify_eq/=; try lia; wp_rec; wp_pures.
-    { iApply "HΦ". auto with iFrame. }
-    iDestruct (array_cons with "Hdst") as "[Hv1 Hdst]".
-    wp_bind (! _)%E.
-    change #src with #(Some (src +ₗ 0%nat) &ₜ 0).
-    wp_apply (shield_read with "Hsrc") as (??) "(S & #Hγ_p1' & %EQ)"; [solve_ndisj|lia|].
-    wp_store. wp_pures.
-
-    iDestruct (array_cons with "Hsrc") as "[Hv2 #Hsrc]".
-    wp_load; wp_store.
-    wp_smart_apply ("IH" with "[%] [%] Hdst Hsrc") as "Hvdst"; [ lia .. | ].
-    iApply "HΦ". by iFrame.
-  Qed.
-
-  Lemma twp_array_copy_to_persistent (dst : loc) (src : blk) vdst vsrc γz s γ_src (n : nat) :
-    Z.of_nat (length vdst) = n → Z.of_nat (length vsrc) = n →
-      {{{ dst ↦∗ vdst ∗ Shield hazptr γz s (Validated src γ_src (λ (_ : blk) (lv : list val) (_ : gname), ⌜lv = vsrc⌝) n) }}}
-        array_copy_to #dst #src #n
+  Lemma wp_array_copy_to_persistent (dst : loc) (src : blk) vdst vsrc γz s γ_src :
+    length vsrc = length vdst →
+      {{{ dst ↦∗ vdst ∗ Shield hazptr γz s (Validated src γ_src (λ (_ : blk) (lv : list val) (_ : gname), ⌜lv = vsrc⌝) (length vsrc)) }}}
+        array_copy_to #dst #src #(length vdst)
       {{{ RET #(); dst ↦∗ vsrc }}}.
   Proof.
-    iIntros (Hvdst Hvsrc Φ) "[Hdst Hsrc] HΦ".
-    iInduction vdst as [|v1 vdst] "IH" forall (n dst src vsrc Hvdst Hvsrc);
-      destruct vsrc as [|v2 vsrc]; simplify_eq/=; try lia; wp_rec; wp_pures.
-    { iApply "HΦ". auto with iFrame. }
-    iDestruct (array_cons with "Hdst") as "[Hv1 Hdst]".
-    wp_bind (! _)%E.
-    change #src with #(Some (src +ₗ 0%nat) &ₜ 0).
-    wp_apply (shield_read with "Hsrc") as (??) "(S & #Hγ_p1' & %EQ)"; [solve_ndisj|lia|].
-    wp_store. wp_pures.
-
-    iDestruct (array_cons with "Hsrc") as "[Hv2 #Hsrc]".
-    wp_load; wp_store.
-    wp_smart_apply ("IH" with "[%] [%] Hdst Hsrc") as "Hvdst"; [ lia .. | ].
-    iApply "HΦ". by iFrame.
+    iIntros (Hlen Φ) "[Hdst S] HΦ".
+    rewrite -(Loc.add_0 src). change 0%Z with (Z.of_nat O).
+    wp_apply (wp_array_copy_to_persistent_off with "[$Hdst $S]").
+    { done. }
+    done.
   Qed.
 
   Lemma wp_array_copy_to_persistent stk E (dst src : loc) vdst vsrc (n : Z) :
