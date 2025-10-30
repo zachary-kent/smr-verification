@@ -30,7 +30,7 @@ Variable (hazptr : hazard_pointer_spec Σ hazptrN).
 Definition node_info γ_p (x : val) (n : option blk) :=
   own γ_p (to_agree (x, n)).
 
-Definition node (_ : blk) lv γ_p : iProp :=
+Definition node (p : blk) lv γ_p : iProp :=
   ∃ x n, ⌜lv = [ x; #(oblk_to_lit n) ]⌝ ∗ node_info γ_p x n.
 
 Fixpoint phys_list γz (lopt : option blk) (xs : list val) : iProp :=
@@ -101,8 +101,6 @@ Proof.
   { iNext. iExists None, []. rewrite Loc.add_0. iFrame "∗#". }
   iModIntro. iApply "HΦ". iFrame "∗". exfr.
 Qed.
-
-Check tstack_push.
 
 Lemma tstack_push_spec :
   stack_push_spec' treiberN hazptrN tstack_push TStack IsTStack.
@@ -205,9 +203,9 @@ Proof using All.
   iSplitL "Nodes st.h↦ γs G_h1"; first by (iExists (Some _); exfr).
 
   wp_pures. wp_bind (! _)%E.
+  
   wp_apply (shield_read with "S") as (??) "(S & #Info_h1' & %EQ)"; [solve_ndisj|lia|].
-  iDestruct "Info_h1'" as (x2 n2) "[-> _]".
-  rewrite /node_info.
+  iDestruct "Info_h1'" as (x2 n2) "[-> Info_h1']".
 
   iCombine "Info_h1 Info_h1'" gives %[= <- <-]%to_agree_op_inv_L.
   iClear "Info_h1'". injection EQ as [= <-].

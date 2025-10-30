@@ -61,7 +61,7 @@ Section code.
       ) else (
         let: "domain" := !("l" +ₗ #domain_off) in
         let: "shield" := hazptr.(shield_new) "domain" in
-        let: "backup'" := hazptr.(shield_protect) "shield" ("l" +ₗ #backup_off) in
+        let: "backup'" := hazptr.(shield_protect_tagged) "shield" ("l" +ₗ #backup_off) in
         array_copy_to "data" (untag "backup'") #n;;
         hazptr.(shield_drop) "shield";;
         "data"
@@ -1532,17 +1532,82 @@ Lemma gmap_injective_insert `{Countable K, Countable V} (k : K) (v : V) (m : gma
       by rewrite -not_true_iff_false Z.odd_spec -Odd_inj in H.
   Qed.
 
-  Lemma twp_array_copy_to_persistent stk E (dst src : loc) vdst vsrc (n : Z) :
+  Lemma wp_array_copy_to_persistent (dst : loc) (src : blk) vdst vsrc γz s γ_src (i : nat) :
+    i + length vdst = length vsrc →
+      {{{ dst ↦∗ vdst ∗ Shield hazptr γz s (Validated src γ_src (λ (_ : blk) (lv : list val) (_ : gname), ⌜lv = vsrc⌝) (length vsrc)) }}}
+        array_copy_to #dst #(src +ₗ i) #(length vdst)
+      {{{ RET #(); dst ↦∗ drop i vsrc }}}.
+  Proof.
+    iIntros (Hlen Φ) "[Hdst S] HΦ". 
+    iLöb as "IH" forall (dst vdst i Hlen).
+    wp_rec. wp_pures. destruct vdst as [|v vdst].
+    { simplify_list_eq. wp_pures. iApply "HΦ".
+      iModIntro. replace i with (length vsrc) in * by lia.
+      rewrite drop_all //. }
+    iDestruct (array_cons with "Hdst") as "[Hv Hvdst]".
+    simplify_list_eq. wp_pures.
+    wp_bind (! _)%E.
+    wp_apply (shield_read with "S") as (? v') "(S & -> & %EQ)"; [solve_ndisj|lia|].
+    wp_store. wp_pures.
+    rewrite Loc.add_assoc.
+    change 1%Z with (Z.of_nat 1).
+    rewrite -Nat2Z.inj_sub /=; last lia.
+    rewrite Nat.sub_0_r -Nat2Z.inj_add Nat.add_1_r.
+    wp_apply ("IH" with "[] [$Hvdst] [$S]").
+    { iPureIntro. lia. }
+    iIntros "Hvdst".
+    iApply "HΦ".
+    iPoseProof (array_cons with "[$Hv $Hvdst]") as "Hvdst".
+    assert (v' :: drop (S i) vsrc = drop i vsrc) as ->.
+    { apply list_eq. intros [|j].
+      { rewrite /= -EQ lookup_drop Nat.add_0_r //. }
+      do 2 rewrite /= lookup_drop.
+      f_equal. lia. }
+    done.
+  Qed.
+    
+    list_solver.
+
+    change #(Some (dst +ₗ 1%nat) &ₜ 0) with #(dst +ₗ 1%nat).
+    change #(Some (src +ₗ (i + 1)%nat) &ₜ 0)%V with #(src +ₗ (i + 1)%nat)%V.
+    iSpecialize ("IH" $! vdst (dst +ₗ i) (S i)).
+    wo_smart_apply "IH".
+    wp_apply "HΦ".
+    iIntros (Hlen Φ).
+    iIntros (Hvdst Hvsrc Φ) "[Hdst Hsrc] HΦ".
+
+
+    iInduction vdst as [|v1 vdst] "IH" forall (n dst src vsrc Hvdst Hvsrc);
+      destruct vsrc as [|v2 vsrc]; simplify_eq/=; try lia; wp_rec; wp_pures.
+    { iApply "HΦ". auto with iFrame. }
+    iDestruct (array_cons with "Hdst") as "[Hv1 Hdst]".
+    wp_bind (! _)%E.
+    change #src with #(Some (src +ₗ 0%nat) &ₜ 0).
+    wp_apply (shield_read with "Hsrc") as (??) "(S & #Hγ_p1' & %EQ)"; [solve_ndisj|lia|].
+    wp_store. wp_pures.
+
+    iDestruct (array_cons with "Hsrc") as "[Hv2 #Hsrc]".
+    wp_load; wp_store.
+    wp_smart_apply ("IH" with "[%] [%] Hdst Hsrc") as "Hvdst"; [ lia .. | ].
+    iApply "HΦ". by iFrame.
+  Qed.
+
+  Lemma twp_array_copy_to_persistent (dst : loc) (src : blk) vdst vsrc γz s γ_src (n : nat) :
     Z.of_nat (length vdst) = n → Z.of_nat (length vsrc) = n →
-      [[{ dst ↦∗ vdst ∗ src ↦∗□ vsrc }]]
-        array_copy_to #dst #src #n @ stk; E
-      [[{ RET #(); dst ↦∗ vsrc }]].
+      {{{ dst ↦∗ vdst ∗ Shield hazptr γz s (Validated src γ_src (λ (_ : blk) (lv : list val) (_ : gname), ⌜lv = vsrc⌝) n) }}}
+        array_copy_to #dst #src #n
+      {{{ RET #(); dst ↦∗ vsrc }}}.
   Proof.
     iIntros (Hvdst Hvsrc Φ) "[Hdst Hsrc] HΦ".
     iInduction vdst as [|v1 vdst] "IH" forall (n dst src vsrc Hvdst Hvsrc);
       destruct vsrc as [|v2 vsrc]; simplify_eq/=; try lia; wp_rec; wp_pures.
     { iApply "HΦ". auto with iFrame. }
     iDestruct (array_cons with "Hdst") as "[Hv1 Hdst]".
+    wp_bind (! _)%E.
+    change #src with #(Some (src +ₗ 0%nat) &ₜ 0).
+    wp_apply (shield_read with "Hsrc") as (??) "(S & #Hγ_p1' & %EQ)"; [solve_ndisj|lia|].
+    wp_store. wp_pures.
+
     iDestruct (array_cons with "Hsrc") as "[Hv2 #Hsrc]".
     wp_load; wp_store.
     wp_smart_apply ("IH" with "[%] [%] Hdst Hsrc") as "Hvdst"; [ lia .. | ].
@@ -1595,14 +1660,13 @@ From smr Require Import helpers hazptr.spec_hazptr hazptr.spec_stack hazptr.code
 
   Context (DISJN : hazptrN ## readN).
 
-
   Lemma read'_spec (γ γᵥ γₕ γᵢ γ_val γz γ_abs : gname) (l d : loc) (n : nat) :
     n > 0 →
       inv readN (read_inv γ γᵥ γₕ γᵢ γ_val γz γ_abs l n) -∗
         (l +ₗ domain_off) ↦□ #d -∗ 
           hazptr.(IsHazardDomain) γz d -∗
             <<{ ∀∀ γ_backup vs, value γ γ_backup vs  }>> 
-              read hazptr n #l @ ↑readN
+              read hazptr n #l @ ⊤,(↑readN ∪ ↑(ptrsN hazptrN)),↑(mgmtN hazptrN)
             <<{ ∃∃ (t : nat) (copy : loc) (backup : blk) (ver : nat), value γ γ_backup vs | 
                 RET #copy; copy ↦∗ vs ∗ ⌜Forall val_is_unboxed vs⌝ ∗ ⌜length vs = n⌝ }>>.
   Proof.
@@ -1650,23 +1714,49 @@ From smr Require Import helpers hazptr.spec_hazptr hazptr.spec_stack hazptr.code
       wp_apply (hazptr.(shield_new_spec) with "[//] [//]") as (s) "S".
       { set_solver. }
       wp_pures.
-      awp_apply (hazptr.(shield_protect_spec) with "[//] S").
-      { set_solver. }
-      rewrite /atomic_acc.
+      awp_apply (hazptr.(shield_protect_tagged_spec) with "[//] [$]").
+      { solve_ndisj. }
+      rewrite /atomic_acc /=. 
+      (* rewrite /atomic_acc. *)
       iInv readN as "(%ver₂ & %log₂ & %abstraction₂ & %actual₂ & %cache₂ & %γ_backup₂ & %γ_backup₂' & %backup₂ & %backup₂' & %index₂ & %validated₂ & %t₂ & >Hver & >Hbackup_ptr & >Hγ & >%Hunboxed₂ & Hbackup_managed₂ & >%Hindex₂ & >%Htag₂ & >%Hlenactual₂ & >%Hlencache₂ & >%Hloglen₂ & Hlog & >%Hlogged₂ & >●Hlog & >●Hγ_abs & >%Habs_backup₂ & >%Habs_backup'₂ & >%Hlenᵢ₂ & >%Hnodup₂ & >%Hrange₂ & >●Hγᵢ & >●Hγᵥ & >Hcache & >%Hcons₂ & Hlock & >●Hγ_val & >%Hvalidated_iff₂ & >%Hvalidated_sub₂ & >%Hdom_eq₂)" "Hcl".
-      iFrame. Set Printing Coercions. iExists (Some backup₂ &ₜ t₂).
+      iMod "AU" as (backup'' actual') "[Hγ' Hlin]".
+      iCombine "Hγ Hγ'" gives %[_ [=<-<-]].
+      iFrame. iModIntro. iSplit.
+      { iIntros "[Hbackup Hbackup_managed]".
+        iDestruct "Hlin" as "[Habort _]".
+        iMod ("Habort" with "Hγ'") as "AU".
+        iMod ("Hcl" with "[-AU]") as "_".
+        { iExists ver₂, log₂, abstraction₂, actual₂, cache₂, γ_backup₂, γ_backup₂', backup₂, backup₂', index₂, validated₂, t₂.
+          iFrame "∗ # %". }
+        done. }
+      iIntros "(Hbackup & Hmanaged & Hprotected)".
+      iDestruct "Hlin" as "[_ Hcommit]".
+      iMod ("Hcommit" $! inhabitant dst inhabitant inhabitant with "Hγ'") as "HΦ".
+      iMod ("Hcl" with "[-HΦ Hprotected]") as "_".
+      { iExists ver₂, log₂, abstraction₂, actual₂, cache₂, γ_backup₂, γ_backup₂', backup₂, backup₂', index₂, validated₂, t₂.
+        iFrame "∗ # %". }
+      iModIntro. wp_pures.
+      
 
-      iAaccIntro with "[]".
-      { instantiate (1 := [tele_arg None; inhabitant; inhabitant; inhabitant]).
-        simpl.
 
 
+
+        by iModIntro.
+
+      
+
+      iSplit.
+
+      iAaccIntro with "[Hbackup_ptr Hbackup_managed₂]".
+      { (* Abort branch *)
+        iIntros "[Hbackup_ptr Hbackup_managed₂]".
+        iMod ("Hcl" with "[Hver Hbackup_ptr Hγ Hbackup_managed₂ Hlog ●Hlog ●Hγ_abs ●Hγᵢ ●Hγᵥ Hcache Hlock ●Hγ_val]") as "_".
+        { iExists ver₂, log₂, abstraction₂, actual₂, cache₂, γ_backup₂, γ_backup₂', backup₂, backup₂', index₂, validated₂, t₂.
+          iFrame "∗ # %". }
+        by eauto with iFrame.
       }
-
-       [solve_ndisj|].
-      { done. }
-       as (s) "S"; [solve_ndisj|].
-      iInv readN as "(%ver₂ & %log₂ & %abstraction₂ & %actual₂ & %cache₂ & %γ_backup₂ & %γ_backup₂' & %backup₂ & %backup₂' & %index₂ & %validated₂ & %t₂ & >Hver & >Hbackup_ptr & >Hγ & >%Hunboxed₂ & Hbackup_managed₂ & >%Hindex₂ & >%Htag₂ & >%Hlenactual₂ & >%Hlencache₂ & >%Hloglen₂ & Hlog & >%Hlogged₂ & >●Hlog & >●Hγ_abs & >%Habs_backup₂ & >%Habs_backup'₂ & >%Hlenᵢ₂ & >%Hnodup₂ & >%Hrange₂ & >●Hγᵢ & >●Hγᵥ & >Hcache & >%Hcons₂ & Hlock & >●Hγ_val & >%Hvalidated_iff₂ & >%Hvalidated_sub₂ & >%Hdom_eq₂)" "Hcl".
+      iIntros (p t γ_p size_i R) "(Hbackup_ptr & Hbackup_managed₂ & S_validated)".
+      (* Now we can use the opened resources *)
       wp_load.
       pose proof Hlogged₂ as Hlogged₂'.
       rewrite -lookup_fmap lookup_fmap_Some in Hlogged₂'.
