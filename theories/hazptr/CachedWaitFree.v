@@ -597,6 +597,8 @@ Section cached_wf.
   Definition log_tokens (log : gmap gname (list val)) : iProp Σ :=
     [∗ map] γ ↦ _ ∈ log, token γ.
 
+  Definition node actual (_ : blk) (lv : list val) (_ : gname) : iProp Σ := ⌜lv = actual⌝.
+
   Definition read_inv (γ γᵥ γₕ γᵢ γ_val γz γ_abs : gname) (l : loc) (len : nat) : iProp Σ :=
     ∃ (ver : nat) (log : gmap gname (list val)) (abstraction : gmap gname blk) (actual cache : list val) (γ_backup γ_backup' : gname) (backup backup' : blk) (index : list gname) (validated : gset gname) (t : nat),
       (* Physical state of version *)
@@ -607,8 +609,8 @@ Section cached_wf.
       ghost_var γ (1/4) (γ_backup, actual) ∗
       (* Every value of BigAtomic is unboxed *)
       ⌜Forall val_is_unboxed actual⌝ ∗
-      (* Shared read ownership of backup *)
-      hazptr.(Managed) γz backup γ_backup len (λ (p : blk) lv γ_p, ⌜lv = actual⌝) ∗
+      (* Shared read ownership of backup using node predicate *)
+      hazptr.(Managed) γz backup γ_backup len (node actual) ∗
       (* The most recent version is associated with some other backup pointer *)
       ⌜last index = Some γ_backup'⌝ ∗
       (* If the backup is validated, then the cache is unlocked, the logical state is equal to the cache,
@@ -665,7 +667,6 @@ Section cached_wf.
   (* Definition log_tokens (log : gmap gname (list val)) : iProp Σ :=
     [∗ map] γ ↦ _ ∈ log, token γ. *)
 
-  Definition node actual (_ : blk) (lv : list val) (_ : gname) : iProp Σ := ⌜lv = actual⌝.
 
   Definition cas_inv (Φ : val → iProp Σ) (γ γₑ γₗ γₜ γ_exp γd : gname) (lexp ldes : blk) (dq dq' : dfrac) (expected desired : list val) s : iProp Σ :=
       ((lexp ↦∗{dq} expected ∗ ldes ↦∗{dq'} desired -∗ Φ #false) ∗ (∃ b : bool, ghost_var γₑ (1/2) b) ∗ ghost_var γₗ (1/2) false) (* The failing write has already been linearized and its atomic update has been consumed *)
@@ -764,68 +765,14 @@ Section cached_wf.
 
   Definition gmap_injective {K A} `{Countable K} (m : gmap K A) :=
     ∀ i j v, m !! i = Some v → m !! j = Some v → i = j.
-(* 
-  Definition read_inv (γ γᵥ γₕ γᵢ γ_val : gname) (l : loc) (len : nat) : iProp Σ :=
-    ∃ (ver : nat) (log : gmap loc (gname * list val)) (actual cache : list val) (marked_backup : val) (backup backup' : loc) (index : list gname) (validated : gset loc),
-      (* Physical state of version *)
-      l ↦ #ver ∗
-      (* backup, consisting of boolean to indicate whether cache is valid, and the backup pointer itself *)
-      (l +ₗ 1) ↦{# 1/2} marked_backup ∗
-      (* Half ownership of logical state *)
-      ghost_var γ (1/4) (backup, actual) ∗
-      (* Every value of BigAtomic is unboxed *)
-      ⌜Forall val_is_unboxed actual⌝ ∗
-      (* Shared read ownerhip of backup *)
-      backup ↦∗□ actual ∗
-      (* The most recent version is associated with some other backup pointer *)
-      ⌜last index = Some backup'⌝ ∗
-      (* If the backup is validated, then the cache is unlocked, the logical state is equal to the cache,
-         and the backup pointer corresponding to the most recent version is up to date *)
-      ⌜marked_backup = InjLV #backup ∨ marked_backup = InjRV #backup ∧ Nat.Even ver ∧ actual = cache ∧ backup = backup'⌝ ∗
-      (* Big atomic is of fixed size *)
-      ⌜length actual = len⌝ ∗ 
-      ⌜length cache = len⌝ ∗
-      (* Every logged value is of correct length *)
-      ⌜map_Forall (λ _ '(_, value), length value = len) log⌝ ∗
-      (* The version number is twice (or one greater than twice) than number of versions *) 
-      (* For every pair of (backup', cache') in the log, we have ownership of the corresponding points-to *)
-      log_tokens log ∗
-      (* The last item in the log corresponds to the currently installed backup pointer *)
-      ⌜snd <$> log !! backup = Some actual⌝ ∗
-      (* Store half authoritative ownership of the log in the read invariant *)
-      log_auth_own γₕ (1/2) log ∗
-      (* The is a mapping in the index for every version *)
-      ⌜length index = S (Nat.div2 (S ver))⌝ ∗
-      (* Because the mapping from versions to log entries is injective, the index should not contain duplicates *)
-      ⌜NoDup index⌝ ∗
-      (* Moreover, every index should be less than the length of the log (to ensure every version
-         corresponds to a valid entry) *)
-      ⌜Forall (.∈ dom log) index⌝ ∗
-      (* Ownership of at least half of the index *)
-      index_auth_own γᵢ (1/4) index ∗
-      (* Ownership of at least half of the counter *)
-      mono_nat_auth_own γᵥ (1/4) ver ∗
-      (* Ownership of at least half of the physical state of the cache *)
-      (l +ₗ 2) ↦∗{# 1/2} cache ∗
-      (* If the version is even, the the value of the backup corresponding to the 
-         stores the cache. Otherwise it must not be valid *)
-      ⌜if Nat.even ver then snd <$> log !! backup' = Some cache else marked_backup = InjLV #backup⌝ ∗
-      (* If the version is even, we have full ownership of index and logical state of version *)
-      (if Nat.even ver then index_auth_own γᵢ (1/4) index ∗ mono_nat_auth_own γᵥ (1/4) ver ∗(l +ₗ 2) ↦∗{# 1/2} cache else True) ∗
-      (* Auth ownership of all pointers that have been validated *)
-      validated_auth_own γ_val 1 validated ∗
-      (* The backup pointer is in the set of validated pointer iff it has actually been validated *)
-      ⌜if bool_decide (backup ∈ validated) then marked_backup = InjRV #backup else marked_backup = InjLV #backup⌝ ∗
-      (* All pointers validated have also been logged *)
-      ⌜validated ⊆ dom log⌝. *)
 
-  (* Definition gmap_mono (order : gmap gname nat) (loc loc' : loc) :=
+  Definition gmap_mono `{Countable K} (order : gmap K nat) (k k' : K) :=
     ∀ i j, 
-      order !! loc = Some i → 
-        order !! loc' = Some j →
-          i < j. *)
+      order !! k = Some i → 
+        order !! k' = Some j →
+          i < j.
 
-  (* Lemma gmap_mono_alloc (l : loc) (i : nat) (order : gmap gname nat) (index : list gname) :
+  Lemma gmap_mono_alloc `{Countable K} (l : K) (i : nat) (order : gmap K nat) (index : list K) :
     l ∉ index →
       StronglySorted (gmap_mono order) index →
         StronglySorted (gmap_mono (<[l := i]>order)) index.
@@ -836,10 +783,10 @@ Section cached_wf.
       inv Hsorted.
       constructor.
       + auto.
-      + clear IH H1.
+      + clear IH.
         induction index as [| loc'' index IH'].
         * constructor.
-        * inv H2. rewrite not_elem_of_cons in Hnmem.
+        * inv H2. inv H3. rewrite not_elem_of_cons in Hnmem.
           destruct Hnmem as [Hne' Hnmem].
           constructor.
           { rewrite /gmap_mono.
@@ -848,7 +795,7 @@ Section cached_wf.
           { auto. }
   Qed.
 
-  Lemma StronglySorted_subseteq (order order' : gmap gname nat) (index : list gname) :
+  Lemma StronglySorted_subseteq `{Countable K} (order order' : gmap K nat) (index : list K) :
     order ⊆ order' →
       Forall (.∈ dom order) index →
         StronglySorted (gmap_mono order) index →
@@ -859,19 +806,18 @@ Section cached_wf.
     - constructor.
     - inv Hdom. inv Hssorted. constructor.
       + auto.
-      + clear IH H3.
+      + clear IH.
         induction index as [| l' index IH].
         * constructor.
-        * inv H2. inv H4.
+        * inv H4. inv H3. inv H5.
           constructor.
           { intros i j Hi Hj.
-            apply elem_of_dom in H1 as [i' Hi'].
-            apply elem_of_dom in H3 as [j' Hj'].
+            apply elem_of_dom in H2 as [i' Hi'].
+            apply elem_of_dom in H4 as [j' Hj'].
             rewrite map_subseteq_spec in Hsub.
             apply Hsub in Hi' as Hi''.
             apply Hsub in Hj' as Hj''.
-            simplify_eq.
-            by apply H2. }
+            simplify_eq. auto. }
           { auto. }
   Qed.
 
@@ -898,9 +844,9 @@ Section cached_wf.
     - inv Hssorted. inv Hord. simpl. constructor.
       + by apply IH.
       + rewrite Forall_app; auto.
-  Qed. *)
+  Qed.
 
-  (* Definition cached_wf_inv (γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ : gname) (l : loc) : iProp Σ :=
+  Definition cached_wf_inv (γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ : gname) (l : loc) : iProp Σ :=
     ∃ (ver : nat) log (actual : list val) (marked_backup : val) (backup : loc) requests (vers : gmap gname nat) (index : list gname) (order : gmap gname nat) (idx : nat),
       (* Ownership of remaining quarter of logical counter *)
       mono_nat_auth_own γᵥ (1/2) ver ∗
@@ -908,8 +854,7 @@ Section cached_wf.
       (l +ₗ 1) ↦{# 1/2} marked_backup ∗
       (* Owernship of the logical state *)
       ghost_var γ (1/4) (backup, actual) ∗
-      (* Backup is exactly the logical state  *)
-      ⌜snd <$> log !! backup = Some actual⌝ ∗
+  (* Backup is exactly the logical state *)
       (* Own other half of log in top-level invariant *)
       log_auth_own γₕ (1/2) log ∗
       (* Other 1/4 of logical state in top-level invariant *)
@@ -952,7 +897,7 @@ Section cached_wf.
       (* Cache versions are associated with monotonically increasing backups *)
       ⌜StronglySorted (gmap_mono order) index⌝ ∗
       (* The order of the current backup is an upper bound on all others *)
-      ⌜map_Forall (λ _ idx', idx' ≤ idx) order⌝. *)
+      ⌜map_Forall (λ _ idx', idx' ≤ idx) order⌝.
 
   Global Instance pointsto_array_persistent l vs : Persistent (l ↦∗□ vs).
   Proof.
