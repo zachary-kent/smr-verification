@@ -1317,11 +1317,13 @@ From smr Require Import helpers.
   Lemma div2_def n : Nat.div2 (S (S n)) = S (Nat.div2 n).
   Proof. done. Qed.
 
-  (* Definition is_cached_wf (v : val) (γ : gname) (n : nat) : iProp Σ :=
-    ∃ (dst : loc) (γₕ γᵥ γᵣ γᵢ γₒ γ_vers γ_val : gname),
+  Definition is_cached_wf (v : val) (γ : gname) (n : nat) : iProp Σ :=
+    ∃ (s dst d : loc) (γₕ γᵥ γᵣ γᵢ γₒ γ_vers γ_val γ_abs γd : gname),
       ⌜v = #dst⌝ ∗
-      inv readN (read_inv γ γᵥ γₕ γᵢ γ_val dst n) ∗
-      inv cached_wfN (cached_wf_inv γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ dst). *)
+      (dst +ₗ domain_off) ↦□ #d ∗ 
+      hazptr.(IsHazardDomain) γd d ∗
+      inv readN (read_inv γ γᵥ γₕ γᵢ γ_val γ_abs γd dst n) ∗
+      inv cached_wfN (cached_wf_inv γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ γ_abs γd s dst n).
 
   Lemma array_persist l vs : l ↦∗ vs ==∗ l ↦∗□ vs.
   Proof.
