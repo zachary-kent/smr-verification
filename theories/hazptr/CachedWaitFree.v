@@ -667,7 +667,7 @@ Section cached_wf.
 
   Definition node actual (_ : blk) (lv : list val) (_ : gname) : iProp Σ := ⌜lv = actual⌝.
 
-  Definition cas_inv (Φ : val → iProp Σ) (γ γₑ γₗ γₜ γ_exp : gname) γd (lexp ldes : blk) (dq dq' : dfrac) (expected desired : list val) s : iProp Σ :=
+  Definition cas_inv (Φ : val → iProp Σ) (γ γₑ γₗ γₜ γ_exp γd : gname) (lexp ldes : blk) (dq dq' : dfrac) (expected desired : list val) s : iProp Σ :=
       ((lexp ↦∗{dq} expected ∗ ldes ↦∗{dq'} desired -∗ Φ #false) ∗ (∃ b : bool, ghost_var γₑ (1/2) b) ∗ ghost_var γₗ (1/2) false) (* The failing write has already been linearized and its atomic update has been consumed *)
     ∨ (£ 1 ∗ AU_cas Φ γ expected desired lexp ldes dq dq' ∗ ghost_var γₑ (1/2) true ∗ ghost_var γₗ (1/2) true ∗ Shield hazptr γd s (Validated lexp γ_exp (node expected) (length expected)))
     ∨ (token γₜ ∗ (∃ b : bool, ghost_var γₑ (1/2) b) ∗ ∃ b : bool, ghost_var γₗ (1/2) b).  (* The failing write has linearized and returned *)
@@ -697,12 +697,12 @@ Section cached_wf.
     rewrite /log_tokens big_sepM_singleton //.
   Qed.
 
-  Definition request_inv (γ γₗ γₑ γ_exp : gname) (lactual : loc) (actual : list val) (abstraction : gmap gname loc) : iProp Σ :=
+  Definition request_inv (γ γₗ γₑ γ_exp γd : gname) (lactual : blk) (actual : list val) (abstraction : gmap gname blk) s : iProp Σ :=
     ∃ lexp, ⌜abstraction !! γ_exp = Some lexp⌝ ∗
       ghost_var γₗ (1/2) (bool_decide (lactual = lexp)) ∗
-      ∃ (Φ : val → iProp Σ) (γₜ : gname) (lexp ldes : loc) (dq dq' : dfrac) (expected desired : list val),
+      ∃ (Φ : val → iProp Σ) (γₜ : gname) (lexp ldes : blk) (dq dq' : dfrac) (expected desired : list val),
         ghost_var γₑ (1/2) (bool_decide (actual = expected)) ∗
-        inv casN (cas_inv Φ γ γₑ γₗ γₜ lexp ldes dq dq' expected desired).
+        inv casN (cas_inv Φ γ γₑ γₗ γₜ γ_exp γd lexp ldes dq dq' expected desired s).
 
   (* Definition registry_inv γ γ_actual lactual actual (requests : list (gname * gname * loc)) (used : gset loc) : iProp Σ :=
     [∗ list] '(γₗ, γₑ, lexp) ∈ requests, ∃ (γ_exp : gname), 
