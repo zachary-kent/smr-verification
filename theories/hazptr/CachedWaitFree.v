@@ -700,6 +700,7 @@ Section cached_wf.
   Definition request_inv (γ γₗ γₑ γ_exp γd : gname) (lactual : blk) (actual : list val) (abstraction : gmap gname blk) s : iProp Σ :=
     ∃ lexp, ⌜abstraction !! γ_exp = Some lexp⌝ ∗
       ghost_var γₗ (1/2) (bool_decide (lactual = lexp)) ∗
+      (* Note that the [lexp] bound here points to a copy of the expected value *)
       ∃ (Φ : val → iProp Σ) (γₜ : gname) (lexp ldes : blk) (dq dq' : dfrac) (expected desired : list val),
         ghost_var γₑ (1/2) (bool_decide (actual = expected)) ∗
         inv casN (cas_inv Φ γ γₑ γₗ γₜ γ_exp γd lexp ldes dq dq' expected desired s).
@@ -708,10 +709,10 @@ Section cached_wf.
     [∗ list] '(γₗ, γₑ, lexp) ∈ requests, ∃ (γ_exp : gname), 
       request_inv γ γₗ γₑ γ_exp γd lactual actual abstraction s.
 
-  (* Lemma registry_inv_mono γ backup expected requests used used' : 
-    used ⊆ used' →
-      registry_inv γ backup expected requests used -∗
-        registry_inv γ backup expected requests used'.
+  Lemma registry_inv_mono γ γd lactual actual requests (abstraction abstraction' : gmap gname blk) s : 
+    abstraction ⊆ abstraction' →
+      registry_inv γ γd lactual actual requests abstraction s -∗
+        registry_inv γ γd lactual actual requests abstraction' s.
   Proof.
     iIntros (Hsub) "Hreginv".
     iInduction requests as [|[[γₗ γₑ] lexp] requests] "IH".
@@ -720,9 +721,11 @@ Section cached_wf.
       iDestruct "Hreginv" as "[Hreqinv Hreginv]".
       iPoseProof ("IH" with "Hreginv") as "$".
       rewrite /request_inv.
-      iDestruct "Hreqinv" as "(%Hin & $ & $)".
-      iPureIntro. set_solver.
-  Qed. *)
+      iDestruct "Hreqinv" as "(%γ_exp & %lexp' & %Hγ_exp & Hlin & $)".
+      iExists lexp'.
+      iFrame. iPureIntro.
+      by eapply map_subseteq_spec.
+  Qed.
 
   Lemma array_frac_add l dq dq' vs vs' : length vs = length vs' → l ↦∗{dq} vs -∗ l ↦∗{dq'} vs' -∗ l ↦∗{dq ⋅ dq'} vs ∗ ⌜vs = vs'⌝.
   Proof.
