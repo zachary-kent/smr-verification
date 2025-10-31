@@ -67,6 +67,19 @@ Section code.
         "data"
       ).
 
+  Definition read' (n : nat) : val :=
+    λ: "l" "ver" "shield",
+      (* let: "ver" := !("l" +ₗ #version_off) in *)
+      (* let: "data" := array_clone ("l" +ₗ #cache_off) #n in *)
+      (* let: "shield" := hazptr.(shield_new) "domain" in *)
+      let: "backup" := hazptr.(shield_protect_tagged) "shield" ("l" +ₗ #backup_off) in
+      if: is_valid "backup" && (!"l" = "ver") then (
+        ("data", "backup")
+      ) else (
+        array_copy_to "data" (untag "backup") #n;;
+        ("data", "backup")
+      ).
+
   Definition array_equal : val :=
     rec: "array_equal" "l" "l'" "n" :=
       if: "n" ≤ #0 then #true
@@ -85,19 +98,22 @@ Section code.
         #()
       else #().
 
-  (* Definition cas (n : nat) : val :=
+  Definition cas (n : nat) : val :=
     λ: "l" "expected" "desired",
-      let: "old" := read' n "l" in
-      if: array_equal (Fst (Fst "old")) "expected" #n then 
+      let: "ver" := !("l" +ₗ #version_off) in
+      let: "shield" := hazptr.(shield_new) "domain" in
+      (* [old] is pair of [(data, backup)] *)
+      let: "old" := read' n "l" "ver" "shield" in
+      if: array_equal (Fst "old") "expected" #n then 
         if: array_equal "expected" "desired" #n then #true
         else
           let: "backup'" := tag (array_clone "desired" #n) in
-          let: "backup" := (Snd (Fst "old")) in
-          if: (CAS ("l" +ₗ #backup) "backup" "backup'") || (CAS ("l" +ₗ #backup) (untag "backup") ("backup'")) then
-            try_validate n "l" (Snd "old") "desired" "backup'";;
+          let: "backup" := (Snd "old") in
+          if: (CAS ("l" +ₗ #backup_off) "backup" "backup'") || (CAS ("l" +ₗ #backup_off) (untag "backup") ("backup'")) then
+            try_validate n "l" "ver" "desired" "backup'";;
             #true
           else #false
-      else #false. *)
+      else #false.
 
 End code.
 
@@ -649,10 +665,12 @@ Section cached_wf.
   (* Definition log_tokens (log : gmap gname (list val)) : iProp Σ :=
     [∗ map] γ ↦ _ ∈ log, token γ. *)
 
-  (* Definition cas_inv (Φ : val → iProp Σ) (γ γₑ γₗ γₜ γ_p : gname) γd (lexp ldes : loc) (dq dq' : dfrac) (expected desired : list val) s p R size : iProp Σ :=
+  Definition node actual (_ : blk) (lv : list val) (_ : gname) : iProp Σ := ⌜lv = actual⌝.
+
+  Definition cas_inv (Φ : val → iProp Σ) (γ γₑ γₗ γₜ γ_exp : gname) γd (lexp ldes : blk) (dq dq' : dfrac) (expected desired : list val) s : iProp Σ :=
       ((lexp ↦∗{dq} expected ∗ ldes ↦∗{dq'} desired -∗ Φ #false) ∗ (∃ b : bool, ghost_var γₑ (1/2) b) ∗ ghost_var γₗ (1/2) false) (* The failing write has already been linearized and its atomic update has been consumed *)
-    ∨ (£ 1 ∗ AU_cas Φ γ expected desired lexp ldes dq dq' ∗ ghost_var γₑ (1/2) true ∗ ghost_var γₗ (1/2) true ∗ Shield hazptr γd s (Validated p γ_p R size))
-    ∨ (token γₜ ∗ (∃ b : bool, ghost_var γₑ (1/2) b) ∗ ∃ b : bool, ghost_var γₗ (1/2) b).  The failing write has linearized and returned *)
+    ∨ (£ 1 ∗ AU_cas Φ γ expected desired lexp ldes dq dq' ∗ ghost_var γₑ (1/2) true ∗ ghost_var γₗ (1/2) true ∗ Shield hazptr γd s (Validated lexp γ_exp (node expected) (length expected)))
+    ∨ (token γₜ ∗ (∃ b : bool, ghost_var γₑ (1/2) b) ∗ ∃ b : bool, ghost_var γₗ (1/2) b).  (* The failing write has linearized and returned *)
 
   (* Lemma log_tokens_impl log l γ :
     fst <$> log !! l = Some γ → log_tokens log -∗ token γ.
@@ -678,13 +696,13 @@ Section cached_wf.
   Proof.
     rewrite /log_tokens big_sepM_singleton //.
   Qed.
-(* 
+
   Definition request_inv (γ γₗ γₑ γ_exp : gname) (lactual : loc) (actual : list val) (abstraction : gmap gname loc) : iProp Σ :=
     ∃ lexp, ⌜abstraction !! γ_exp = Some lexp⌝ ∗
       ghost_var γₗ (1/2) (bool_decide (lactual = lexp)) ∗
       ∃ (Φ : val → iProp Σ) (γₜ : gname) (lexp ldes : loc) (dq dq' : dfrac) (expected desired : list val),
         ghost_var γₑ (1/2) (bool_decide (actual = expected)) ∗
-        inv casN (cas_inv Φ γ γₑ γₗ γₜ lexp ldes dq dq' expected desired). *)
+        inv casN (cas_inv Φ γ γₑ γₗ γₜ lexp ldes dq dq' expected desired).
 
   (* Definition registry_inv γ γ_actual lactual actual (requests : list (gname * gname * loc)) (used : gset loc) : iProp Σ :=
     [∗ list] '(γₗ, γₑ, lexp) ∈ requests, ∃ (γ_exp : gname), 
@@ -1531,8 +1549,6 @@ Lemma gmap_injective_insert `{Countable K, Countable V} (k : K) (v : V) (m : gma
     - rewrite Nat.odd_spec in H'.
       by rewrite -not_true_iff_false Z.odd_spec -Odd_inj in H.
   Qed.
-
-  Definition node actual (_ : blk) (lv : list val) (_ : gname) : iProp Σ := ⌜lv = actual⌝.
 
   Lemma wp_array_copy_to_protected_off (dst : loc) (src : blk) vdst vsrc γz s γ_src (i : nat) :
     i + length vdst = length vsrc →
