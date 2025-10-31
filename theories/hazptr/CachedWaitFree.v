@@ -706,8 +706,8 @@ Section cached_wf.
         ghost_var γₑ (1/2) (bool_decide (actual = expected)) ∗
         inv casN (cas_inv Φ γ γₑ γₗ γₜ γ_exp γd lexp ldes dq dq' expected desired s).
 
-  Definition registry_inv γ γd lactual actual (requests : list (gname * gname * blk)) (abstraction : gmap gname blk) s : iProp Σ :=
-    [∗ list] '(γₗ, γₑ, lexp) ∈ requests, ∃ (γ_exp : gname), 
+  Definition registry_inv γ γd lactual actual (requests : list (gname * gname * gname)) (abstraction : gmap gname blk) s : iProp Σ :=
+    [∗ list] '(γₗ, γₑ, γ_exp) ∈ requests,
       request_inv γ γₗ γₑ γ_exp γd lactual actual abstraction s.
 
   Lemma registry_inv_mono γ γd lactual actual requests (abstraction abstraction' : gmap gname blk) s : 
@@ -722,7 +722,7 @@ Section cached_wf.
       iDestruct "Hreginv" as "[Hreqinv Hreginv]".
       iPoseProof ("IH" with "Hreginv") as "$".
       rewrite /request_inv.
-      iDestruct "Hreqinv" as "(%γ_exp & %lexp' & %Hγ_exp & Hlin & $)".
+      iDestruct "Hreqinv" as "(%lexp' & %Hγ_exp & Hlin & $)".
       iExists lexp'.
       iFrame. iPureIntro.
       by eapply map_subseteq_spec.
@@ -846,58 +846,60 @@ Section cached_wf.
       + rewrite Forall_app; auto.
   Qed.
 
-  Definition cached_wf_inv (γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ : gname) (l : loc) : iProp Σ :=
-    ∃ (ver : nat) log (actual : list val) (marked_backup : val) (backup : loc) requests (vers : gmap gname nat) (index : list gname) (order : gmap gname nat) (idx : nat),
-      (* Ownership of remaining quarter of logical counter *)
-      mono_nat_auth_own γᵥ (1/2) ver ∗
-      (* Ownership of the backup location *)
-      (l +ₗ 1) ↦{# 1/2} marked_backup ∗
-      (* Owernship of the logical state *)
-      ghost_var γ (1/4) (backup, actual) ∗
-  (* Backup is exactly the logical state *)
-      (* Own other half of log in top-level invariant *)
-      log_auth_own γₕ (1/2) log ∗
-      (* Other 1/4 of logical state in top-level invariant *)
-      (* Ownership of request registry *)
-      registry γᵣ requests ∗
-      (* State of request registry *)
-      registry_inv γ backup actual requests (dom log) ∗
-      (* Auth ownership of version mapping *)
-      vers_auth_own γ_vers 1 vers ∗
-      (* domain of versions is contained in domain of log *)
-      ⌜dom vers ⊂ dom log⌝ ∗
-      (* Only atomics after the first have read in invalid version after being swapped in *)
-      ⌜if bool_decide (1 < size log) then
-        (∃ ver' : nat,
-          (* Version at which backup was swapped in *)
-          vers !! backup = Some ver' ∧
-          (* It is a lower bound on the current version *)
+Definition cached_wf_inv (γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ γ_abs γd : gname) (s : loc) (l : loc) (len : nat) : iProp Σ :=
+  ∃ (ver : nat) (log : gmap gname (list val)) (abstraction : gmap gname blk)
+    (actual cache : list val) (γ_backup γ_backup' : gname)
+    (backup backup' : blk) (requests : list (gname * gname * gname))
+    (vers : gmap gname nat) (index : list gname) (order : gmap gname nat) (idx : nat) (t : nat),
+    (* Ownership of remaining quarter of logical counter *)
+    mono_nat_auth_own γᵥ (1/2) ver ∗
+    (* Ownership of the backup location (stored with a tag bit) *)
+    (l +ₗ backup_off) ↦{# 1/2} #(Some (Loc.blk_to_loc backup) &ₜ t) ∗
+    (* Ownership of the logical state (remaining quarter) *)
+    ghost_var γ (1/4) (γ_backup, actual) ∗
+    (* Own other half of log in top-level invariant *)
+    log_auth_own γₕ (1/2) log ∗
+    (* Own half of the abstraction map to share with the read invariant *)
+    abstraction_auth_own γ_abs (1/2) abstraction ∗
+    (* Ownership of request registry *)
+    registry γᵣ requests ∗
+    (* State of request registry against the current abstraction *)
+    registry_inv γ γd backup actual requests abstraction s ∗
+    (* Authoritative ownership of version mapping *)
+    vers_auth_own γ_vers 1 vers ∗
+    (* Own other half of index *)
+    index_auth_own γᵢ (1/2) index ∗
+    (* Authoritative ownership of the logical ordering *)
+    vers_auth_own γₒ 1 order ∗
+    (* Structural facts mirroring the read invariant *)
+    ⌜Forall val_is_unboxed actual⌝ ∗
+    ⌜length actual = len⌝ ∗
+    ⌜length cache = len⌝ ∗
+    ⌜map_Forall (λ _ value, length value = len) log⌝ ∗
+    ⌜log !! γ_backup = Some actual⌝ ∗
+    ⌜abstraction !! γ_backup = Some backup⌝ ∗
+    ⌜is_Some (abstraction !! γ_backup')⌝ ∗
+    ⌜dom log = dom abstraction⌝ ∗
+    ⌜length index = S (Nat.div2 (S ver))⌝ ∗
+    (* ⌜NoDup index⌝ ∗ *)
+    (* ⌜Forall (.∈ dom log) index⌝ ∗ *)
+    (* The history map tracks which versions have been published. *)
+    ⌜dom vers ⊂ dom log⌝ ∗
+    ⌜if bool_decide (1 < size log) then
+        (∃ ver',
+          vers !! γ_backup = Some ver' ∧
           ver' ≤ ver ∧
-          (* The version at which the current backup was swapped in is an upper bound on the versions of all previous backups *)
           map_Forall (λ _ ver'', ver'' ≤ ver') vers ∧
-          (* If the version at which the backup was swapped in is the current version, then the backup cannot be validated *)
-          if bool_decide (ver = ver') then marked_backup = InjLV #backup else True)
+          if bool_decide (ver = ver') then t = 0 else True)
       else vers = ∅⌝ ∗
-      (* Own other half of index *)
-      index_auth_own γᵢ (1/2) index ∗
-      (* Most recently cached backup *)
-      (* ⌜last index = Some backup'⌝ ∗ *)
-      (* Auth ownership of order sequence *)
-      vers_auth_own γₒ 1 order ∗
-      (* The ordering binds every logged backup *)
-      ⌜dom order = dom log⌝ ∗
-      (* The order is injective, establishing a total order on backup pointers *)
-      ⌜gmap_injective order⌝ ∗
-      (* The current backup is ordered *)
-      ⌜order !! backup = Some idx⌝ ∗
-      (* And so is the old backup corresponding to the cache *)
-      (* ⌜order !! backup' = Some idx'⌝ ∗
-      (* The current backup is indeed more recent than the cached backup *)
-      ⌜idx' ≤ idx⌝ ∗ *)
-      (* Cache versions are associated with monotonically increasing backups *)
-      ⌜StronglySorted (gmap_mono order) index⌝ ∗
-      (* The order of the current backup is an upper bound on all others *)
-      ⌜map_Forall (λ _ idx', idx' ≤ idx) order⌝.
+    (* Relationship between the cached value and the currently installed backup. *)
+    ⌜if Nat.even ver then log !! γ_backup' = Some cache else t ≠ 0⌝ ∗
+    (* Ordering metadata over logical backups. *)
+    ⌜dom order = dom log⌝ ∗
+    ⌜gmap_injective order⌝ ∗
+    ⌜order !! γ_backup = Some idx⌝ ∗
+    ⌜StronglySorted (gmap_mono order) index⌝ ∗
+    ⌜map_Forall (λ _ idx', idx' ≤ idx) order⌝.
 
   Global Instance pointsto_array_persistent l vs : Persistent (l ↦∗□ vs).
   Proof.
@@ -1193,23 +1195,20 @@ Section cached_wf.
     - intros [k H]. exists (Z.to_nat k). lia.
   Qed.
 
-  (* Definition cached_wf_inv (γ γᵥ γₕ γᵣ γᵢ : gname) (l : loc) (len : nat) : iProp Σ :=
-    ∃ log (actual : list val) requests,
-      (* Own other half of log in top-level invariant *)
-      log_auth_own γₕ (1/2) log ∗
-      (* Other 1/4 of logical state in top-level invariant *)
-      ghost_var γ (1/4) actual ∗
-      (* Ownership of request registry *)
-      registry γᵣ requests ∗
-      (* State of request registry *)
-      registry_inv γ (l +ₗ 1) actual requests (dom log). *)
+From iris.algebra Require Import excl_auth csum.
+From iris.base_logic.lib Require Import invariants token.
+From smr.program_logic Require Import atomic.
+From smr.lang Require Import proofmode notation.
+From iris.prelude Require Import options.
 
-  (* Lemma wp_array_copy_to_half' γ γᵥ γₕ γᵢ γ_val dst src (vs vs' : list val) i n dq :
+From smr Require Import helpers.
+
+  Lemma wp_array_copy_to_half' γ γᵥ γₕ γᵢ γ_val γz γ_abs dst src (vs vs' : list val) i n dq :
     i ≤ n → length vs = n - i → length vs = length vs' →
-        inv readN (read_inv γ γᵥ γₕ γᵢ γ_val dst n) -∗
-            {{{ (dst +ₗ 2 +ₗ i) ↦∗{#1 / 2} vs ∗ (src +ₗ i) ↦∗{dq} vs' }}}
-              array_copy_to #(dst +ₗ 2 +ₗ i) #(src +ₗ i) #(n - i)%nat
-            {{{ RET #(); (dst +ₗ 2 +ₗ i) ↦∗{#1 / 2} vs' ∗ (src +ₗ i) ↦∗{dq} vs' }}}.
+      inv readN (read_inv γ γᵥ γₕ γᵢ γ_val γz γ_abs dst n) -∗
+        {{{ (dst +ₗ cache_off +ₗ i) ↦∗{#1 / 2} vs ∗ (src +ₗ i) ↦∗{dq} vs' }}}
+          array_copy_to #(dst +ₗ cache_off +ₗ i) #(src +ₗ i) #(n - i)%nat
+        {{{ RET #(); (dst +ₗ cache_off +ₗ i) ↦∗{#1 / 2} vs' ∗ (src +ₗ i) ↦∗{dq} vs' }}}.
   Proof.
     iIntros (Hle Hlen Hmatch) "#Hinv %Φ !> [Hdst Hsrc] HΦ".
     iLöb as "IH" forall (i vs vs' Hlen Hle Hmatch).
@@ -1237,50 +1236,51 @@ Section cached_wf.
       iDestruct "Hsrc" as "[Hsrc Hsrc']".
       wp_load.
       wp_bind (_ <- _)%E.
-      iInv readN as "(%ver & %log & %actual & %cache & %marked_backup & %backup & %backup' & %index & %validated & >Hver & >Hbackup & >Hγ & >%Hunboxed & >#□Hbackup & >%Hindex & >%Hvalidated & >%Hlenactual & >%Hlencache & >%Hloglen & Hlog & >%Hlogged & >●Hlog & >%Hlenᵢ & >%Hnodup & >%Hrange & >●Hγᵢ & >●Hγᵥ & >Hcache & >%Hcons & Hlock & Hval)" "Hcl".
+      iInv readN as "(%ver & %log & %abstraction & %actual & %cache & %γ_backup & %γ_backup' & %backup & %backup' & %index & %validated & %t & >Hver & >Hbackup_ptr & >Hγ & >%Hunboxed & Hbackup_managed & >%Hindex & >%Htag & >%Hlenactual & >%Hlencache & >%Hloglen & Hlog & >%Hlogged & >●Hlog & >●Hγ_abs & >%Habs_backup & >%Habs_backup' & >%Hlenᵢ & >%Hnodup & >%Hrange & >●Hγᵢ & >●Hγᵥ & >Hcache & >%Hcons & Hlock & >●Hγ_val & >%Hvalidated_iff & >%Hvalidated_sub & >%Hdom_eq)" "Hcl".
       assert (i < length cache) as [v'' Hv'']%lookup_lt_is_Some by lia.
       destruct (Nat.even ver) eqn:Heven.
-      + iMod "Hlock" as "(Hγᵢ' & Hγᵥ' & Hcache') /=".
+      { iMod "Hlock" as "(Hγᵢ' & Hγᵥ' & Hcache') /=".
         iCombine "Hcache Hcache'" as "Hcache".
         iPoseProof (update_array _ _ _ i v'' with "Hcache") as "[Hcache _]".
         { done. }
-        by iCombine "Hdst Hcache" gives %[Hfrac%dfrac_valid_own_r <-].
-      + simplify_eq.
-        iPoseProof (update_array _ _ _ i v'' with "Hcache") as "[Hcache Hacc]".
-        { done. }
-        iCombine "Hdst Hcache" as "Hcache".
-        rewrite dfrac_op_own Qp.half_half.
-        wp_store.
-        iDestruct "Hcache" as "[Hcache Hcache']".
-        iPoseProof ("Hacc" with "Hcache") as "Hcache".
-        (* $Hregistry $Hreginv $Hver Hγᵢ Hγᵥ Hcache *)
-        simplify_eq.
-        iMod ("Hcl" with "[-Hcache' Hdst' Hsrc Hsrc' HΦ]") as "_".
-        { iExists ver, log, actual, (<[i:=v']> cache), (InjLV #backup), backup, backup', index.
-          iFrame "∗ # %".
-          rewrite Heven. iFrame.
-          iNext. repeat iSplit; try done.
-          { iPureIntro. auto. }
-          by rewrite length_insert. }
-        iModIntro.
-        wp_pures.
-        rewrite -> Nat2Z.inj_sub by done.
-        rewrite -Z.sub_add_distr.
-        rewrite (Loc.add_assoc (dst +ₗ 2)) /=.
-        rewrite (Loc.add_assoc src) /=.
+        iDestruct (pointsto_combine with "Hdst Hcache") as "[Hdst ->]".
+        iDestruct (pointsto_valid with "Hdst") as %[=]%dfrac_valid_own_r. }
+      simplify_eq.
+      iPoseProof (update_array _ _ _ i v'' with "Hcache") as "[Hcache Hacc]".
+      { done. }
+      iDestruct (pointsto_combine with "Hdst Hcache") as "[Hcache ->]".
+      rewrite dfrac_op_own Qp.half_half.
+      wp_store.
+      iDestruct "Hcache" as "[Hcache Hcache']".
+      iPoseProof ("Hacc" with "Hcache") as "Hcache".
+      (* $Hregistry $Hreginv $Hver Hγᵢ Hγᵥ Hcache *)
+      simplify_eq.
+      iMod ("Hcl" with "[-Hcache' Hdst' Hsrc Hsrc' HΦ]") as "_".
+      { iExists ver, log, abstraction, actual, (<[i:=v']>cache), γ_backup, γ_backup', backup, backup', index, validated, t.
+        iFrame "∗ # %".
+        rewrite Heven. iFrame.
+        iNext. repeat iSplit; try done.
+        { iPureIntro. rewrite bool_decide_eq_false_2 //. }
+        by rewrite length_insert. }
+      iModIntro.
+      wp_pures.
+      rewrite -> Nat2Z.inj_sub by done.
+      rewrite -Z.sub_add_distr.
+      rewrite (Loc.add_assoc (dst +ₗ cache_off)) /=.
+      rewrite (Loc.add_assoc src) /=.
+      change 1%Z with (Z.of_nat 1).
+      rewrite -Nat2Z.inj_add Nat.add_comm /=.
+      rewrite <- Nat2Z.inj_sub by lia.
+      simplify_list_eq.
+      wp_apply ("IH" $! (S i) vs vs' with "[] [] [//] [$] [$]").
+      * iPureIntro. lia.
+      * iPureIntro. lia.
+      * iIntros "[Hdst' Hsrc']".
+        iApply "HΦ". iFrame.
+        rewrite (Loc.add_assoc (dst +ₗ cache_off)) /=.
         change 1%Z with (Z.of_nat 1).
-        rewrite -Nat2Z.inj_add Nat.add_comm /=.
-        rewrite <- Nat2Z.inj_sub by lia.
-        simplify_list_eq.
-        wp_apply ("IH" $! (S i) vs vs' with "[] [] [//] [$] [$]").
-        * iPureIntro. lia.
-        * iPureIntro. lia.
-        * iIntros "[Hdst' Hsrc']".
-          iApply "HΦ". iFrame.
-          rewrite (Loc.add_assoc (dst +ₗ 2)) /=.
-          change 1%Z with (Z.of_nat 1).
-          by rewrite -Nat2Z.inj_add Nat.add_comm /=.
-  Qed. *)
+        by rewrite -Nat2Z.inj_add Nat.add_comm /=.
+  Qed.
 
   (* Lemma wp_array_copy_to_half γ γᵥ γₕ γᵢ γ_val dst src (vs vs' : list val) n dq :
     length vs = n → length vs = length vs' →
