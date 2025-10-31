@@ -704,9 +704,9 @@ Section cached_wf.
         ghost_var γₑ (1/2) (bool_decide (actual = expected)) ∗
         inv casN (cas_inv Φ γ γₑ γₗ γₜ γ_exp γd lexp ldes dq dq' expected desired s).
 
-  (* Definition registry_inv γ γ_actual lactual actual (requests : list (gname * gname * loc)) (used : gset loc) : iProp Σ :=
+  Definition registry_inv γ γd lactual actual (requests : list (gname * gname * blk)) (abstraction : gmap gname blk) s : iProp Σ :=
     [∗ list] '(γₗ, γₑ, lexp) ∈ requests, ∃ (γ_exp : gname), 
-    request_inv γ γₗ γₑ lactual lexp actual used. *)
+      request_inv γ γₗ γₑ γ_exp γd lactual actual abstraction s.
 
   (* Lemma registry_inv_mono γ backup expected requests used used' : 
     used ⊆ used' →
