@@ -1260,8 +1260,8 @@ From smr Require Import helpers.
         iFrame "∗ # %".
         rewrite Heven. iFrame.
         iNext. repeat iSplit; try done.
-        { iPureIntro. rewrite bool_decide_eq_false_2 //. }
-        by rewrite length_insert. }
+        { rewrite bool_decide_eq_false_2 //. }
+        rewrite length_insert //. }
       iModIntro.
       wp_pures.
       rewrite -> Nat2Z.inj_sub by done.
@@ -1279,26 +1279,26 @@ From smr Require Import helpers.
         iApply "HΦ". iFrame.
         rewrite (Loc.add_assoc (dst +ₗ cache_off)) /=.
         change 1%Z with (Z.of_nat 1).
-        by rewrite -Nat2Z.inj_add Nat.add_comm /=.
+        rewrite -Nat2Z.inj_add Nat.add_comm //=.
   Qed.
 
-  (* Lemma wp_array_copy_to_half γ γᵥ γₕ γᵢ γ_val dst src (vs vs' : list val) n dq :
+  Lemma wp_array_copy_to_half γ γᵥ γₕ γᵢ γ_val γz γ_abs dst src (vs vs' : list val) n dq :
     length vs = n → length vs = length vs' →
-        inv readN (read_inv γ γᵥ γₕ γᵢ γ_val dst n) -∗
-          {{{ (dst +ₗ 2) ↦∗{#1 / 2} vs ∗ src ↦∗{dq} vs' }}}
-            array_copy_to #(dst +ₗ 2) #src #n
-          {{{ RET #(); (dst +ₗ 2) ↦∗{#1 / 2} vs' ∗ src↦∗ {dq} vs' }}}.
+      inv readN (read_inv γ γᵥ γₕ γᵢ γ_val γz γ_abs dst n) -∗
+        {{{ (dst +ₗ cache_off) ↦∗{#1 / 2} vs ∗ src ↦∗{dq} vs' }}}
+          array_copy_to #(dst +ₗ cache_off) #src #n
+        {{{ RET #(); (dst +ₗ cache_off) ↦∗{#1 / 2} vs' ∗ src↦∗ {dq} vs' }}}.
   Proof.
     iIntros (Hlen Hlen') "#Hinv %Φ !> [Hdst Hsrc] HΦ".
-    rewrite -(Loc.add_0 (dst +ₗ 2)).
+    rewrite -(Loc.add_0 (dst +ₗ cache_off)).
     rewrite -(Loc.add_0 src).
     change 0%Z with (Z.of_nat 0).
     rewrite -{2}(Nat.sub_0_r n).
-    wp_apply (wp_array_copy_to_half' _ _ _ _ _ _ _ vs vs' with "[$] [$] [$]").
+    wp_apply (wp_array_copy_to_half' _ _ _ _ _ _ _ _ _ vs vs' with "[$] [$] [$]").
     - lia.
     - lia.
     - done.
-  Qed. *)
+  Qed.
 
   Lemma even_iff_not_odd n : Nat.Even n ↔ ¬ (Nat.Odd n).
   Proof.
