@@ -65,7 +65,7 @@ Section array.
     0 < length vs →
     {{{ l ↦∗{q} vs }}}
       array_clone #l #(length vs) @ stk; E
-    {{{ l', RET #l'; l ↦∗{q} vs ∗ l' ↦∗ vs ∗ †l'…(length vs) }}}.
+    {{{ (l' : blk) , RET #l'; l ↦∗{q} vs ∗ l' ↦∗ vs ∗ †l'…(length vs) }}}.
   Proof.
     iIntros (Hlen Φ) "Hl HΦ".
     wp_lam. wp_alloc l' as "Hl'" "†l'".

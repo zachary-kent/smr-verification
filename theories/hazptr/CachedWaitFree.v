@@ -629,9 +629,9 @@ Section cached_wf.
       (* Store half authoritative ownership of the log in the read invariant *)
       log_auth_own γₕ (1/2) log ∗
       (* Auth ownership of abstraction mapping physical to logical pointers *)
-      abstraction_auth_own γ_abs 1 abstraction ∗
+      abstraction_auth_own γ_abs (1/2) abstraction ∗
       ⌜abstraction !! γ_backup = Some backup⌝ ∗
-      ⌜is_Some (abstraction !! γ_backup')⌝ ∗
+      ⌜abstraction !! γ_backup' = Some backup'⌝ ∗
       (* The is a mapping in the index for every version *)
       ⌜length index = S (Nat.div2 (S ver))⌝ ∗
       (* Because the mapping from versions to log entries is injective, the index should not contain duplicates *)
@@ -1359,69 +1359,69 @@ Lemma gmap_injective_insert `{Countable K, Countable V} (k : K) (v : V) (m : gma
     - do 2 rewrite lookup_insert_ne //. apply Hinj.
   Qed.    
 
-  (* Lemma new_big_atomic_spec (n : nat) (src : loc) dq vs :
-    length vs = n → n > 0 → Forall val_is_unboxed vs →
-      {{{ src ↦∗{dq} vs }}}
-        new_big_atomic n #src
-      {{{ v γ, RET v; src ↦∗{dq} vs ∗ is_cached_wf v γ n ∗ ∃ backup, value γ backup vs  }}}.
+  Lemma new_big_atomic_spec (src d dom : loc) γz dq vs :
+    length vs > 0 → Forall val_is_unboxed vs →
+      {{{ IsHazardDomain hazptr γz dom ∗ src ↦∗{dq} vs }}}
+        new_big_atomic (length vs) #src #d
+      {{{ v γ γ_backup, RET v; src ↦∗{dq} vs ∗ is_cached_wf v γ (length vs) ∗ value γ γ_backup vs }}}.
   Proof.
-    iIntros "%Hlen %Hpos %Hunboxed %Φ Hsrc HΦ".
+    iIntros "%Hpos %Hunboxed %Φ [Hd Hsrc] HΦ".
     wp_rec.
     wp_pures.
-    wp_alloc l as "Hl".
-    { done. }
+    wp_alloc l as "Hl" "†Hl".
     wp_pures.
-    rewrite Nat2Z.id /= array_cons array_cons.
-    iDestruct "Hl" as "(Hversion & Hvalidated & Hcache)".
-    rewrite Loc.add_assoc /=.
+    rewrite Nat2Z.id /= array_cons array_cons array_cons.
+    iDestruct "Hl" as "(Hversion & Hvalidated & Hdomain & Hcache)".
+    rewrite Loc.add_assoc Loc.add_assoc /=.
+    change 1%Z with (Z.of_nat 1).
+    do 2 rewrite -Nat2Z.inj_add /=.
     change (1 + 1)%Z with 2%Z.
     wp_apply (wp_array_clone with "Hsrc").
     { auto. }
-    { lia. }
-    iIntros (backup) "[Hbackup Hsrc]".
-    wp_store.
-    wp_smart_apply (wp_array_copy_to _ _ _ _ (replicate n #0) vs with "[$]").
-    { by rewrite length_replicate. }
-    { auto. }
-    iIntros "[[Hcache Hcache'] Hsrc]". wp_pures.
-    iMod (ghost_var_alloc (backup, vs)) as "(%γ & Hγ & Hγ' & Hγ'')".
+    iIntros (backup) "(Hsrc & Hbackup & †Hbackup)".
+    wp_store. wp_store.
+    rewrite -{5}(length_replicate (length vs) #0).
+    wp_smart_apply (wp_array_copy_to with "[$Hcache $Hsrc]").
+    { rewrite length_replicate //. }
+    iIntros "[[Hcache Hcache'] Hsrc]".
+    iMod token_alloc as "[%γ_backup Hγ_backup]".
+    iMod (ghost_var_alloc (γ_backup, vs)) as "(%γ & Hγ & Hγ' & Hγ'')".
     iMod (mono_nat_own_alloc 0) as "(%γᵥ & (Hγᵥ & Hγᵥ' & Hγᵥ'') & _)".
-    iMod (own_alloc (● map_seq O (to_agree <$> [backup]))) as "(%γᵢ & Hγᵢ & Hγᵢ' & Hγᵢ'')".
+    iMod (own_alloc (● map_seq O (to_agree <$> [γ_backup]))) as "(%γᵢ & Hγᵢ & Hγᵢ' & Hγᵢ'')".
     { by apply auth_auth_valid, singleton_valid. }
     replace (1 / 2 / 2)%Qp with (1 / 4)%Qp by compute_done.
-    iMod token_alloc as "[%γₜ Hγₜ]".
-    iMod (own_alloc (● {[ backup := to_agree (γₜ, vs) ]})) as "(%γₕ & Hγₕ & Hγₕ')".
-    { by apply auth_auth_valid, singleton_valid. }
-    rewrite -map_fmap_singleton.
+    (* iMod token_alloc as "[%γₜ Hγₜ]". *)
+    iMod (own_alloc (● fmap (M := gmap gname) to_agree ({[ γ_backup := backup ]}))) as "(%γ_abs & Hγ_abs & Hγ_abs')".
+    { rewrite map_fmap_singleton. by apply auth_auth_valid, singleton_valid. }
+    iMod (own_alloc (● fmap (M := gmap gname) to_agree {[ γ_backup := vs ]})) as "(%γₕ & Hγₕ & Hγₕ')".
+    { rewrite map_fmap_singleton. by apply auth_auth_valid, singleton_valid. }
     iMod (own_alloc (● map_seq O (to_agree <$> []))) as "[%γᵣ Hγᵣ]".
     { by apply auth_auth_valid. }
-    iMod (array_persist with "Hbackup") as "#Hbackup".
     iDestruct "Hvalidated" as "[Hvalidated Hvalidated']".
     replace (1 / 2 / 2)%Qp with (1/4)%Qp by compute_done.
-    iMod (own_alloc (● {[ backup ]})) as "[%γ_val Hγ_val]".
+    iMod (own_alloc (● {[ γ_backup ]})) as "[%γ_val Hγ_val]".
     { by apply auth_auth_valid. }
-    iMod (inv_alloc readN _ (read_inv γ γᵥ γₕ γᵢ γ_val l n) with "[$Hvalidated $Hγ' $Hγᵥ' Hγᵥ'' Hγ_val $Hγₕ Hγᵢ' $Hγᵢ'' $Hcache Hcache' Hγₜ $Hversion $Hbackup]") as "#Hreadinv".
-    { iExists backup, {[ backup ]}. iFrame "∗ # %".
-      simpl.
-      iSplit; first done.
-      iNext. iSplit.
-      { iPureIntro. right. split.
-        { done. }
-        { rewrite -Nat.even_spec /= //. } }
-      iSplit.
+    change #backup with #(Some (Loc.blk_to_loc backup) &ₜ O).
+    change (Z.of_nat 1) with 1%Z.
+    iMod (hazptr.(hazard_domain_register) (node vs) with "Hd [$Hbackup $†Hbackup //]") as "Hmanaged".
+    { solve_ndisj. }
+    iMod (inv_alloc readN _ (read_inv γ γᵥ γₕ γᵢ γ_val γz γ_abs l (length vs)) with "[$Hmanaged Hvalidated $Hγ' $Hγᵥ' Hγᵥ'' Hγ_val Hγₕ Hγᵢ' Hγᵢ'' Hcache Hcache' Hversion Hγ_backup Hγ_abs]") as "#Hreadinv".
+    { iExists {[ γ_backup := vs ]}, {[ γ_backup := backup ]}, vs. iFrame "∗ # %".
+      iExists γ_backup, backup.
+      iNext.
+      repeat iSplit; try done.
+      { rewrite -Nat.even_spec //=. }
       { rewrite map_Forall_singleton //. }
-      iSplitL "Hγₜ".
-      { rewrite log_tokens_singleton. iFrame "∗ #". }
-      iSplit.
-      { rewrite lookup_singleton_eq //=. }
-      iSplit.
-      { done. }
-      iSplit.
+      { rewrite log_tokens_singleton //. }
+      { rewrite lookup_singleton //. }
+      { rewrite lookup_singleton //. }
+      { rewrite lookup_singleton //. }
       { iPureIntro. apply NoDup_singleton. }
-      iSplit.
-      { iPureIntro. rewrite Forall_singleton. set_solver. }
-      rewrite bool_decide_eq_true_2; last set_solver.
-      rewrite lookup_singleton_eq //=. repeat iSplit; try done. iPureIntro. set_solver. }
+      { rewrite Forall_singleton. iPureIntro. set_solver. }
+      { rewrite lookup_singleton //. }
+      { iPureIntro. split; first done. intros _. set_solver. }
+      { iPureIntro. set_solver. }
+      { iPureIntro. set_solver. } }
     iMod (own_alloc (● (∅ : gmap _ _))) as "[%γ_vers Hγ_vers]".
     { by apply auth_auth_valid. }
     iMod (own_alloc (● {[ backup := to_agree O ]})) as "[%γₒ Hγₒ]".
@@ -1441,7 +1441,7 @@ Lemma gmap_injective_insert `{Countable K, Countable V} (k : K) (v : V) (m : gma
     iModIntro.
     iApply "HΦ".
     by iFrame "∗ #".
-  Qed. *)
+  Qed.
 
   Lemma div2_mono x y : x ≤ y → Nat.div2 x ≤ Nat.div2 y.
   Proof.
