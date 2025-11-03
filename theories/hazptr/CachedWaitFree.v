@@ -878,7 +878,7 @@ Definition cached_wf_inv (γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ γ_abs γd : 
     ⌜map_Forall (λ _ value, length value = len) log⌝ ∗
     ⌜log !! γ_backup = Some actual⌝ ∗
     ⌜abstraction !! γ_backup = Some backup⌝ ∗
-    ⌜is_Some (abstraction !! γ_backup')⌝ ∗
+    ⌜abstraction !! γ_backup' = Some backup'⌝ ∗
     ⌜dom log = dom abstraction⌝ ∗
     ⌜length index = S (Nat.div2 (S ver))⌝ ∗
     (* ⌜NoDup index⌝ ∗ *)
@@ -1322,7 +1322,7 @@ From smr Require Import helpers.
       ⌜v = #dst⌝ ∗
       (dst +ₗ domain_off) ↦□ #d ∗ 
       hazptr.(IsHazardDomain) γd d ∗
-      inv readN (read_inv γ γᵥ γₕ γᵢ γ_val γ_abs γd dst n) ∗
+      inv readN (read_inv γ γᵥ γₕ γᵢ γ_val γd γ_abs dst n) ∗
       inv cached_wfN (cached_wf_inv γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ γ_abs γd s dst n).
 
   Lemma array_persist l vs : l ↦∗ vs ==∗ l ↦∗□ vs.
@@ -1359,13 +1359,13 @@ Lemma gmap_injective_insert `{Countable K, Countable V} (k : K) (v : V) (m : gma
     - do 2 rewrite lookup_insert_ne //. apply Hinj.
   Qed.    
 
-  Lemma new_big_atomic_spec (src d dom : loc) γz dq vs :
+  Lemma new_big_atomic_spec (src dom : loc) γz dq vs :
     length vs > 0 → Forall val_is_unboxed vs →
       {{{ IsHazardDomain hazptr γz dom ∗ src ↦∗{dq} vs }}}
-        new_big_atomic (length vs) #src #d
+        new_big_atomic (length vs) #src #dom
       {{{ v γ γ_backup, RET v; src ↦∗{dq} vs ∗ is_cached_wf v γ (length vs) ∗ value γ γ_backup vs }}}.
   Proof.
-    iIntros "%Hpos %Hunboxed %Φ [Hd Hsrc] HΦ".
+    iIntros "%Hpos %Hunboxed %Φ [#Hdom Hsrc] HΦ".
     wp_rec.
     wp_pures.
     wp_alloc l as "Hl" "†Hl".
@@ -1403,7 +1403,7 @@ Lemma gmap_injective_insert `{Countable K, Countable V} (k : K) (v : V) (m : gma
     { by apply auth_auth_valid. }
     change #backup with #(Some (Loc.blk_to_loc backup) &ₜ O).
     change (Z.of_nat 1) with 1%Z.
-    iMod (hazptr.(hazard_domain_register) (node vs) with "Hd [$Hbackup $†Hbackup //]") as "Hmanaged".
+    iMod (hazptr.(hazard_domain_register) (node vs) with "Hdom [$Hbackup $†Hbackup //]") as "Hmanaged".
     { solve_ndisj. }
     iMod (inv_alloc readN _ (read_inv γ γᵥ γₕ γᵢ γ_val γz γ_abs l (length vs)) with "[$Hmanaged Hvalidated $Hγ' $Hγᵥ' Hγᵥ'' Hγ_val Hγₕ Hγᵢ' Hγᵢ'' Hcache Hcache' Hversion Hγ_backup Hγ_abs]") as "#Hreadinv".
     { iExists {[ γ_backup := vs ]}, {[ γ_backup := backup ]}, vs. iFrame "∗ # %".
@@ -1422,25 +1422,31 @@ Lemma gmap_injective_insert `{Countable K, Countable V} (k : K) (v : V) (m : gma
       { iPureIntro. split; first done. intros _. set_solver. }
       { iPureIntro. set_solver. }
       { iPureIntro. set_solver. } }
-    iMod (own_alloc (● (∅ : gmap _ _))) as "[%γ_vers Hγ_vers]".
-    { by apply auth_auth_valid. }
-    iMod (own_alloc (● {[ backup := to_agree O ]})) as "[%γₒ Hγₒ]".
-    { by apply auth_auth_valid, singleton_valid. }
-    iMod (inv_alloc cached_wfN _ (cached_wf_inv γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ l) with "[$Hγ'' $Hγₕ' $Hγᵣ $Hvalidated' $Hγᵥ Hγ_vers Hγₒ $Hγᵢ]") as "#Hinv".
-    { iExists ∅, {[ backup := O ]}, O. 
-      rewrite /registry_inv /vers_auth_own map_fmap_singleton lookup_singleton_eq /=. iFrame.
+    iMod (own_alloc (● (fmap (M := gmap gname) to_agree (∅ : gmap gname nat)))) as "[%γ_vers Hγ_vers]".
+    { rewrite fmap_empty. by apply auth_auth_valid. }
+    iMod (own_alloc (● (fmap (M := gmap gname) to_agree {[ γ_backup := O ]}))) as "[%γₒ Hγₒ]".
+    { rewrite map_fmap_singleton. by apply auth_auth_valid, singleton_valid. }
+    iMod (inv_alloc cached_wfN _ (cached_wf_inv γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ γ_abs γz inhabitant l (length vs)) with "[$Hγ'' $Hγₕ' $Hγᵣ $Hvalidated' $Hγᵥ Hγ_vers Hγₒ $Hγᵢ $Hγ_abs']") as "#Hinv".
+    { iExists vs, γ_backup, backup, ∅, {[ γ_backup := O ]}, O. 
+      rewrite /registry_inv /vers_auth_own map_fmap_singleton lookup_singleton /=. iFrame.
       rewrite bool_decide_eq_false_2; first last.
       { rewrite map_size_singleton. lia. }
       iPureIntro. repeat split; auto with set_solver.
+      - rewrite map_Forall_singleton //.
+      - rewrite lookup_singleton //.
+      - rewrite lookup_singleton //.
+      - rewrite lookup_singleton //.
       - set_solver.
+      - set_solver.
+      - rewrite lookup_singleton //.
       - set_solver.
       - apply gmap_injective_singleton.
-      - rewrite lookup_insert_eq //.
       - repeat constructor.
       - rewrite map_Forall_singleton //. }
+    wp_pures.
+    iMod (pointsto_persist with "Hdomain") as "#Hdomain".
     iModIntro.
-    iApply "HΦ".
-    by iFrame "∗ #".
+    by iApply ("HΦ" with "[$Hsrc $Hinv $Hreadinv $Hdomain $Hdom $Hγ]").
   Qed.
 
   Lemma div2_mono x y : x ≤ y → Nat.div2 x ≤ Nat.div2 y.
