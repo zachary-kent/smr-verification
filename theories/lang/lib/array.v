@@ -28,22 +28,22 @@ Section array.
   Context `{!heapGS Σ}.
   (* Implicit Types (l : loc) (n : nat) (v : val) (vs : list val). *)
 
-  Lemma wp_array_copy_to stk E (ld ls : loc) vdst vsrc q :
-    length vdst = length vsrc →
+  Lemma wp_array_copy_to stk E (ld ls : loc) vdst vsrc q n :
+    length vdst = n → length vsrc = n →
     {{{ ld ↦∗ vdst ∗ ls ↦∗{q} vsrc }}}
-      array_copy_to #ld #ls #(length vdst) @ stk; E
+      array_copy_to #ld #ls #n @ stk; E
     {{{ RET #(); ld ↦∗ vsrc ∗ ls ↦∗{q} vsrc }}}.
   Proof.
-    iIntros (Hlen Φ) "[Hdst Hsrc] HΦ".
+    iIntros (Hlen_dst Hlen_src Φ) "[Hdst Hsrc] HΦ".
     (* iRevert (ld ls Φ) "Hdst Hsrc HΦ". *)
-    iInduction (vdst) as [|vd vdst] "IH" forall (ld ls vsrc Hlen).
+    iInduction (vdst) as [|vd vdst] "IH" forall (ld ls vsrc n Hlen_dst Hlen_src).
     - (* vdst = [] *)
       simplify_list_eq.
-      symmetry in Hlen.
-      rewrite length_zero_iff_nil in Hlen.
+      rewrite length_zero_iff_nil in Hlen_src.
       simplify_eq.
       wp_rec. wp_pures. iApply ("HΦ" with "[$]").
     - (* vdst = vd :: vdst *)
+      simplify_list_eq.
       destruct vsrc as [|vs vsrc]; first done.
       simplify_list_eq.
       iDestruct (array_cons with "Hdst") as "[Hd Hdst]".
@@ -56,7 +56,8 @@ Section array.
       change 1%Z with (Z.of_nat 1).
       rewrite -Nat2Z.inj_sub; last lia.
       rewrite /= Nat.sub_0_r.
-      wp_apply ("IH" with "[//] [$] [$]").
+      wp_apply ("IH" with "[] [//] [$] [$]").
+      { done. }
       iIntros "[Hld Hls]".
       iApply ("HΦ" with "[$]").
   Qed.

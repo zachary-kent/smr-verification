@@ -1984,6 +1984,22 @@ From smr Require Import helpers hazptr.spec_hazptr hazptr.spec_stack hazptr.code
         rewrite -Nat.Even_div2 //.
         replace (length vdst) with (length actual₁) by lia.
         by iFrame "∗ # %".
+    - iMod ("Hcl" with "[-HΦ Hprotected Hdst]") as "_".
+      { iExists ver₁, log₁, abstraction₁, actual₁, cache₁, γ_backup₁, γ_backup₁', backup₁, backup₁', index₁, validated₁, t₁. iFrame "∗ # %". }
+      iModIntro. rewrite /is_valid.
+      wp_pures.
+      rewrite (bool_decide_eq_false_2 (Z.of_nat t₁ = 0)) //; last lia.
+      wp_pures.
+      wp_apply wp_array_copy_to_protected.
+      wp_apply (wp_array_copy_to_protected _ _ _ with "[$Hdst Hprotected]").
+      { lia. }
+      { by replace (length actual₁) with (length vdst) by lia. }
+      iIntros "[Hdst S]". wp_pures.
+      iModIntro.
+      iApply "HΦ".
+      rewrite -Nat.Even_div2 //.
+      replace (length vdst) with (length actual₁) by lia.
+      by iFrame "∗ # %".
 
 
 
