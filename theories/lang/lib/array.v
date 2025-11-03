@@ -62,21 +62,23 @@ Section array.
       iApply ("HΦ" with "[$]").
   Qed.
 
-  Lemma wp_array_clone stk E l q vs :
-    0 < length vs →
+  Lemma wp_array_clone stk E l q vs n :
+    length vs = n → 0 < length vs →
     {{{ l ↦∗{q} vs }}}
-      array_clone #l #(length vs) @ stk; E
-    {{{ (l' : blk) , RET #l'; l ↦∗{q} vs ∗ l' ↦∗ vs ∗ †l'…(length vs) }}}.
+      array_clone #l #n @ stk; E
+    {{{ (l' : blk) , RET #l'; l ↦∗{q} vs ∗ l' ↦∗ vs ∗ †l'…n }}}.
   Proof.
-    iIntros (Hlen Φ) "Hl HΦ".
+    iIntros (Hlen Hpos Φ) "Hl HΦ".
     wp_lam. wp_alloc l' as "Hl'" "†l'".
     { lia. }
     wp_pures.
-    rewrite Nat2Z.id -{4}(length_replicate (length vs) #()) //.
-    wp_apply (wp_array_copy_to _ _ _ _ (replicate (length vs) #()) vs  with "[$]").
-    { rewrite length_replicate //. }
+    (* rewrite Nat2Z.id -{4}(length_replicate (length vs) #()) //. *)
+    wp_apply (wp_array_copy_to _ _ _ _ (replicate (Z.to_nat n) #()) vs with "[$]").
+    { rewrite length_replicate. lia. }
+    { done. }
     iIntros "[Hl' Hl]".
     wp_pures.
+    rewrite Nat2Z.id.
     iApply ("HΦ" with "[$]").
   Qed.
 End array.
