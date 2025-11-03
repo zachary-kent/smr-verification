@@ -433,6 +433,22 @@ Section cached_wf.
     by iFrame.
   Qed.
 
+  Lemma abstraction_frag_alloc γ_l l γ q abstraction :
+    abstraction !! γ_l = Some l →
+      abstraction_auth_own γ q abstraction ==∗
+        abstraction_auth_own γ q abstraction ∗ abstraction_frag_own γ γ_l l.
+  Proof.
+    iIntros (Hlookup) "Hauth".
+    iMod (own_update with "Hauth") as "[H● H◯]".
+    { apply auth_update_dfrac_alloc with (b := {[γ_l := to_agree l]}).
+      { apply _. }
+      apply singleton_included_l.
+      exists (to_agree l). split; last done.
+      rewrite lookup_fmap Hlookup //.
+    }
+    by iFrame.
+  Qed.
+
   Lemma log_auth_frag_agree γₕ q log i value : 
     log_auth_own γₕ q log -∗
       log_frag_own γₕ i value -∗
@@ -1861,7 +1877,17 @@ From smr Require Import helpers hazptr.spec_hazptr hazptr.spec_stack hazptr.code
                 <<{ ∀∀ γ_backup vs, value γ γ_backup vs  }>> 
                   read' hazptr n #l #ver #shield @ ⊤,(↑readN ∪ ↑(ptrsN hazptrN)),↑(mgmtN hazptrN)
                 <<{ ∃∃ (γ_backup : gname) (backup copy : blk) (t : nat) (ver : nat), value γ γ_backup vs | 
-                    RET (#copy, #(Some (Loc.blk_to_loc backup) &ₜ t))%V; copy ↦∗ vs ∗ ⌜Forall val_is_unboxed vs⌝ ∗ ⌜length vs = n⌝ ∗ abstraction_frag_own γ γ_backup backup ∗ log_frag_own γₕ γ_backup vs ∗ if bool_decide (t = 0) then validated_frag_own γ_val γ_backup ∗ ∃ ver', mono_nat_lb_own γᵥ ver' ∗ ⌜ver ≤ ver'⌝ ∗ index_frag_own γᵢ (Nat.div2 ver') γ_backup else True }>>.
+                    RET (#copy, #(Some (Loc.blk_to_loc backup) &ₜ t))%V; 
+                      copy ↦∗ vs ∗
+                      ⌜Forall val_is_unboxed vs⌝ ∗
+                      ⌜length vs = n⌝ ∗
+                      Shield hazptr γz shield (Validated backup γ_backup (node vs) n) ∗
+                      abstraction_frag_own γ_abs γ_backup backup ∗
+                      log_frag_own γₕ γ_backup vs ∗
+                      if bool_decide (t = 0) then
+                        validated_frag_own γ_val γ_backup ∗
+                        ∃ ver', mono_nat_lb_own γᵥ ver' ∗ ⌜ver ≤ ver'⌝ ∗ index_frag_own γᵢ (Nat.div2 ver') γ_backup 
+                      else True }>>.
   Proof.
     iIntros (Hpos) "#Hinv #Hd #Hd_domain #Hlb Hshield %Φ AU".
     wp_rec. wp_pures.
@@ -1890,23 +1916,22 @@ From smr Require Import helpers hazptr.spec_hazptr hazptr.spec_stack hazptr.code
     (* iDestruct (index_auth_frag_agree with "●Hγᵢ ◯Hγᵢ") as "%Hindexagree". *)
     iMod (log_frag_alloc γ_backup₁ with "●Hlog") as "[●Hlog #◯Hlog₁]".
     { eassumption. }
+    iMod (abstraction_frag_alloc γ_backup₁ with "●Hγ_abs") as "[●Hγ_abs #◯Hγ_abs]".
+    { eassumption. }
     iDestruct (mono_nat_lb_own_valid with "●Hγᵥ Hlb") as %[_ Hle].
     iPoseProof (mono_nat_lb_own_get with "●Hγᵥ") as "#Hlb₁".
     iMod (index_frag_alloc (Nat.div2 (S ver₁)) with  "●Hγᵢ") as "[●Hγᵢ #◯Hγᵢ₁]".
     { by rewrite last_lookup Hlenᵢ₁ in Hindex₁. }
-        (* destruct (decide (backup₁ ∈ validated₁)) as [Hinval | Hninval]; first last.
-        { rewrite bool_decide_eq_false_2 // in Hvalagree₁. } *)
-        (* iMod (validated_auth_frag_alloc with "●Hγ_val") as "[●Hγ_val #◯Hγ_val₁]". *)
-        (* { done. }  *)
-    iMod ("Hcl" with "[-HΦ Hprotected Hdst]") as "_".
-      { iExists ver₁, log₁, abstraction₁, actual₁, cache₁, γ_backup₁, γ_backup₁', backup₁, backup₁', index₁, validated₁, t₁.
-      iFrame "∗ # %". }
-    iModIntro. rewrite /is_valid. wp_pures.
     destruct (decide (t₁ = 0)) as [-> | Hne₁].
     - destruct Htag₁ as (HEven₁ & <- & <-).
-      destruct (Nat.even ver₁); last done. simplify_eq.
-      rewrite bool_decide_eq_true_2 //.
-      wp_pures.
+      destruct (Nat.even ver₁) eqn:Heven₁; last done. simplify_eq.
+      iMod (validated_auth_frag_alloc γ_backup₁ with "●Hγ_val") as "[●Hγ_val #◯Hγ_val₁]".
+      { naive_solver. }
+      iMod ("Hcl" with "[-HΦ Hprotected Hdst]") as "_".
+      { iExists ver₁, log₁, abstraction₁, actual₁, actual₁, γ_backup₁, γ_backup₁, backup₁, backup₁, index₁, validated₁, 0.
+        iFrame "∗ # %". rewrite bool_decide_eq_true_2 //. iSplit; auto.
+        rewrite Heven₁. iFrame "∗ # %". }
+      iModIntro. rewrite /is_valid. wp_pures.
       wp_bind (! _)%E.
       iInv readN as "(%ver₂ & %log₂ & %abstraction₂ & %actual₂ & %cache₂ & %γ_backup₂ & %γ_backup₂' & %backup₂ & %backup₂' & %index₂ & %validated₂ & %t₂ & >Hver & >Hbackup_ptr & >Hγ & >%Hunboxed₂ & Hbackup_managed₂ & >%Hindex₂ & >%Htag₂ & >%Hlenactual₂ & >%Hlencache₂ & >%Hloglen₂ & Hlog & >%Hlogged₂ & >●Hlog & >●Hγ_abs & >%Habs_backup₂ & >%Habs_backup'₂ & >%Hlenᵢ₂ & >%Hnodup₂ & >%Hrange₂ & >●Hγᵢ & >●Hγᵥ & >Hcache & >%Hcons₂ & Hlock & >●Hγ_val & >%Hvalidated_iff₂ & >%Hvalidated_sub₂ & >%Hdom_eq₂)" "Hcl".
       rewrite Loc.add_0.
@@ -1935,6 +1960,33 @@ From smr Require Import helpers hazptr.spec_hazptr hazptr.spec_stack hazptr.code
           iPoseProof (log_auth_frag_agree with "●Hlog ◯Hlog₁") as "%Hagree₃".
           rewrite -Nat.Even_div2 // in Hagree₁.
           by simplify_eq. }
+          iMod ("Hcl" with "[-HΦ Hprotected Hdst]") as "_".
+          { iExists ver, log₂, abstraction₂, actual₂, cache₂, γ_backup₂, γ_backup₂', backup₂, backup₂', index₂, validated₂, t₂.
+            iFrame "∗ # %". rewrite Loc.add_0 //. }
+        iModIntro.
+        wp_pures.
+        iModIntro.
+        iApply "HΦ".
+        rewrite -Nat.Even_div2 //.
+        iFrame "∗#%".
+      + iMod ("Hcl" with "[-HΦ Hprotected Hdst]") as "_".
+        { iExists ver₂, log₂, abstraction₂, actual₂, cache₂, γ_backup₂, γ_backup₂', backup₂, backup₂', index₂, validated₂, t₂. iFrame "∗ # %". rewrite Loc.add_0 //. }
+        iModIntro.
+        wp_pures.
+        rewrite (bool_decide_eq_false_2 (Z.of_nat ver₂ = Z.of_nat ver)); last lia.
+        wp_pures.
+        wp_apply (wp_array_copy_to_protected _ _ _  actual₁ with "[$Hdst Hprotected]").
+        { lia. }
+        { by replace (length actual₁) with (length vdst) by lia. }
+        iIntros "[Hdst S]". wp_pures.
+        iModIntro.
+        iApply "HΦ".
+        rewrite -Nat.Even_div2 //.
+        replace (length vdst) with (length actual₁) by lia.
+        by iFrame "∗ # %".
+
+
+
         
 
     iIntros (Hpos) "#Hinv %Φ AU".
