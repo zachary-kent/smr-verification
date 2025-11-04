@@ -688,7 +688,7 @@ Section cached_wf.
 
   Definition cas_inv (Φ : val → iProp Σ) (γ γₑ γₗ γₜ γ_exp γd : gname) (lexp lexp_src ldes : blk) (dq dq' : dfrac) (expected desired : list val) : iProp Σ :=
       (£ 1 ∗ (lexp_src ↦∗{dq} expected ∗ ldes ↦∗{dq'} desired -∗ Φ #false) ∗ (∃ b : bool, ghost_var γₑ (1/2) b) ∗ ghost_var γₗ (1/2) false ∗ ∃ s, Shield hazptr γd s (Validated lexp γ_exp (node expected) (length expected))) (* The failing write has already been linearized and its atomic update has been consumed *)
-    ∨ (£ 2 ∗ AU_cas Φ γ expected desired lexp ldes dq dq' ∗ ghost_var γₑ (1/2) true ∗ ghost_var γₗ (1/2) true ∗ ∃ s, Shield hazptr γd s (Validated lexp γ_exp (node expected) (length expected)))
+    ∨ (£ 2 ∗ AU_cas Φ γ expected desired lexp_src ldes dq dq' ∗ ghost_var γₑ (1/2) true ∗ ghost_var γₗ (1/2) true ∗ ∃ s, Shield hazptr γd s (Validated lexp γ_exp (node expected) (length expected)))
     ∨ (token γₜ ∗ (∃ b : bool, ghost_var γₑ (1/2) b) ∗ ∃ b : bool, ghost_var γₗ (1/2) b).  (* The failing write has linearized and returned *)
 
   (* Lemma log_tokens_impl log l γ :
@@ -2025,7 +2025,7 @@ From smr Require Import helpers hazptr.spec_hazptr hazptr.spec_stack hazptr.code
       (* (%Hfresh & Hlin & %Φ & %γₜ' & %lexp' & %ldes & %dq & %dq' & %expected & %desired & Hγₑ & #Hwinv) *)
       iDestruct "Hreqs" as "[(%lexp & %Hlexp_abs & Hlin & %Φ & %γₜ & %lexp' & %ldes & %dq & %dq' & %expected & %desired & Hγₑ & #Hcasinv) Hreqs]".
       iMod ("IH" with "Htok Hmanaged Hlogtokens Hγ Hreqs") as "(Htok & Hmanaged & Hlogtokens & Hγ & Hreqinv)".
-      iInv casN as "[(>Hcredit & HΦ & [%b >Hγₑ'] & >Hlin' & %s &Hprotected) | [(>[Hcredit Hcredit'] & AU & >Hγₑ' & Hlin' & %s & Hprotected) | (>Hlintok & [%b >Hγₑ'] & [%b' >Hlin'])]]" "Hclose".
+      iInv casN as "[(>Hcredit & HΦ & [%b >Hγₑ'] & >Hlin' & %s &Hprotected) | [(>[Hcredit Hcredit'] & AU & >Hγₑ' & >Hlin' & %s & Hprotected) | (>Hlintok & [%b >Hγₑ'] & [%b' >Hlin'])]]" "Hclose".
       + iCombine "Hlin Hlin'" gives %[_ ->].
         iMod (ghost_var_update_halves (bool_decide (actual' = expected)) with "Hγₑ Hγₑ'") as "[Hγₑ Hγₑ']".
         destruct (decide (l_actual' = lexp)) as [-> | Hneqγ].
@@ -2039,36 +2039,27 @@ From smr Require Import helpers hazptr.spec_hazptr hazptr.spec_stack hazptr.code
         { iLeft. iFrame. }
         iFrame "∗ # %".
         rewrite /request_inv bool_decide_eq_false_2 //.
-      +
-        
-
-          apply elem_of_dom in Hfresh as [[γₜ'' value] Hvalue].
-          by destruct (log !! lexp).
-        * iFrame "∗ # %".
-          rewrite /request_inv.
-          replace (bool_decide (lactual' = lexp)) with false.
-          { by iFrame. }
-          { by rewrite bool_decide_eq_false_2. }
       + iCombine "Hlin Hlin'" gives %[_ ->%bool_decide_eq_true].
         iCombine "Hγₑ Hγₑ'" gives %[_ ->%bool_decide_eq_true].
+        destruct (decide (l_actual' = lexp)) as [-> | Hneqγ].
+        { iMod (lc_fupd_elim_later with "Hcredit Hprotected") as "Hprotected". 
+          iPoseProof (shield_managed_agree with "Hprotected Hmanaged") as "->".
+          iPoseProof (log_tokens_impl (dom abstraction) γ_actual' with "Hlogtokens") as "Htok'".
+          { rewrite elem_of_dom //. }
+          iCombine "Htok Htok'" gives %[]. }
         iMod (ghost_var_update_halves false with "Hlin Hlin'") as "[Hlin Hlin']".
         iMod (lc_fupd_elim_later with "Hcredit AU") as "AU".
         iMod "AU" as (backup'' actual'') "[Hγ' [_ Hconsume]]".
         iCombine "Hγ Hγ'" gives %[_ [=<-<-]].
-        rewrite (bool_decide_eq_false_2 (actual' = expected)); last done.
-        destruct (decide (lactual' = lexp)) as [-> | Hdiff].
-        * apply elem_of_dom in Hfresh as [[γₜ'' value] Hvalue].
-          iPoseProof (log_tokens_impl with "Hlog") as "[Hactual' _]".
-          { done. }
-          by destruct (log !! lexp).
-        * iFrame "∗ # %".
-          rewrite (bool_decide_eq_false_2 (lactual' = lexp)); last done.
-          iMod (ghost_var_update_halves (bool_decide (actual' = expected)) with "Hγₑ Hγₑ'") as "[Hγₑ Hγₑ']".
-          iMod ("Hconsume" with "[$]") as "HΦ".
-          iFrame.
-          iMod ("Hclose" with "[-]") as "_".
-          { iLeft. iFrame. }
-          done.
+        rewrite (bool_decide_eq_false_2 (actual' = expected)) //.
+        iMod (ghost_var_update_halves (bool_decide (actual' = expected)) with "Hγₑ Hγₑ'") as "[Hγₑ Hγₑ']".
+        iMod ("Hconsume" with "[$]") as "HΦ".
+        iFrame "∗#%".
+        rewrite (bool_decide_eq_false_2 (l_actual' = lexp)) //.
+        iFrame "∗#%".
+        iMod ("Hclose" with "[-]") as "_".
+        { iLeft. iFrame. }
+        done.
       + iMod (ghost_var_update_halves (bool_decide (lactual' = lexp)) with "Hlin Hlin'") as "[Hlin Hlin']".
         iMod (ghost_var_update_halves (bool_decide (actual' = expected)) with "Hγₑ Hγₑ'") as "[Hγₑ Hγₑ']".
         iFrame "∗ # %".
