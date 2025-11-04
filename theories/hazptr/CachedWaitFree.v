@@ -2223,31 +2223,35 @@ Qed.
     + iCombine "Hγₜ Hlintok" gives %[].
   Qed.
 
-  Lemma wp_try_validate (γ γᵥ γₕ γᵣ γᵢ γ_val γ_vers γₒ γₚ' : gname) (l ldes ldes' : loc) (dq : dfrac)
-                        (expected desired : list val) (ver ver₂ idx₂ : nat) (index₂ : list gname)
-                        (order₂ : gmap gname nat) :
-    length expected > 0 → length expected = length desired → ver ≤ ver₂ → length index₂ = S (Nat.div2 (S ver₂)) →
+  Lemma wp_try_validate (γ γᵥ γₕ γᵣ γᵢ γ_val γ_vers γₒ γd γ_abs γ_backup : gname) (l l_desired backup : blk) (dq : dfrac)
+                        (desired : list val) (ver ver₂ idx₂ : nat) (index₂ : list gname)
+                        (abstraction : gmap gname blk) (order₂ : gmap gname nat) (n : nat) s :
+    n > 0 → 
+    length desired = n →
+    ver ≤ ver₂ → length index₂ = S (Nat.div2 (S ver₂)) →
       StronglySorted (gmap_mono order₂) index₂ → Forall (.∈ dom order₂) index₂ → map_Forall (λ _ idx, idx ≤ idx₂) order₂ →
-        order₂ !! ldes' = None →
-          inv readN (read_inv γ γᵥ γₕ γᵢ γ_val l (length expected)) -∗
-            inv cached_wfN (cached_wf_inv γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ l) -∗
+        order₂ !! γ_backup = None →
+        Shield hazptr γd s (Validated backup γ_backup (node desired) n) -∗
+          inv readN (read_inv γ γᵥ γₕ γᵢ γ_val γd γ_abs l n) -∗
+            inv cached_wfN (cached_wf_inv γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ γ_abs γd l n) -∗
               mono_nat_lb_own γᵥ ver₂ -∗
                 own γᵢ (◯ map_seq O (to_agree <$> index₂)) -∗
-                  log_frag_own γₕ ldes' γₚ' desired -∗
-                    vers_frag_own γₒ ldes' (S idx₂) -∗
-                      own γₒ (◯ (fmap (M := gmap loc) to_agree order₂)) -∗
-                        vers_frag_own γ_vers ldes' ver₂ -∗
-                          {{{ ldes ↦∗{dq} desired }}}
-                            try_validate (length expected) #l #ver #ldes #ldes'
-                          {{{ RET #(); ldes ↦∗{dq} desired }}}.
+                  abstraction_frag_own γ_abs γ_backup backup -∗
+                    log_frag_own γₕ γ_backup desired -∗
+                      vers_frag_own γₒ γ_backup (S idx₂) -∗
+                        own γₒ (◯ (fmap (M := gmap gname) to_agree order₂)) -∗
+                          vers_frag_own γ_vers γ_backup ver₂ -∗
+                            {{{ l_desired ↦∗{dq} desired }}}
+                              try_validate n #l #ver #l_desired #backup
+                            {{{ RET #(); l_desired ↦∗{dq} desired }}}.
   Proof.
-    iIntros (Hlenexp Hlenmatch Hle Hlenᵢ₂ Hindexordered Hmono Hubord₂ Hldes'fresh) "#Hreadinv #Hinv #◯Hγᵥ #◯Hγᵢ #◯Hγₕ #◯Hγₒ #◯Hγₒcopy #◯Hγ_vers %Φ !# Hldes HΦ".
+    iIntros (Hpos Hlen_desired Hle Hlenᵢ₂ Hmono Hindexordered Hubord₂ Hbackup_fresh) "Hprotected #Hreadinv #Hinv #◯Hγᵥ #◯Hγᵢ #◯Hγ_abs #◯Hγₕ #◯Hγₒ #◯Hγₒcopy #◯Hγ_vers %Φ !# Hldes HΦ".
     rewrite /try_validate. wp_pures.
     destruct (Nat.even ver) eqn:Heven.
     - rewrite Zrem_even even_inj Heven /=.
       wp_pures.
       wp_bind (CmpXchg _ _ _).
-      iInv readN as "(%ver₃ & %log₃ & %actual₃ & %cache₃ & %marked_backup₃ & %backup₃ & %backup₃' & %index₃ & %validated₃ & >Hver & >Hbackup & >Hγ & >%Hunboxed & >#□Hbackup₃ & >%Hindex₃ & >%Hvalidated₃ & >%Hlenactual₃ & >%Hlencache₃ & >%Hloglen₃ & Hlogtokens & >%Hlogged₃ & >●Hγₕ & >%Hlenᵢ₃ & >%Hnodup₃ & >%Hrange₃ & >●Hγᵢ & >●Hγᵥ & >Hcache & >%Hcons₃ & Hlock & >●Hγ_val & >%Hval₃ & >%Hvallogged₃)" "Hcl".
+      iInv readN as "(%ver₃ & %log₃ & %abstraction₃ & %actual₃ & %cache₃ & %γ_backup₃ & %γ_backup₃' & %backup₃ & %backup₃' & %index₃ & %validated₃ & %t₃ & >Hver & >Hbackup_ptr & >Hγ & >%Hunboxed₃ & Hbackup_managed₃ & >%Hindex₃ & >%Htag₃ & >%Hlenactual₃ & >%Hlencache₃ & >%Hloglen₃ & Hlog & >%Hlogged₃ & >●Hlog & >●Hγ_abs & >%Habs_backup₃ & >%Habs_backup'₃ & >%Hlenᵢ₃ & >%Hnodup₃ & >%Hrange₃ & >●Hγᵢ & >●Hγᵥ & >Hcache & >%Hcons₃ & Hlock & >●Hγ_val & >%Hvalidated_iff₃ & >%Hvalidated_sub₃ & >%Hdom_eq₃)" "Hcl".
       iInv cached_wfN as "(%ver'' & %log₃' & %actual₃' & %marked_backup₃' & %backup₃'' & %requests₃ & %vers₃ & %index₃' & %order₃ & %idx₃ & >●Hγᵥ' & >Hbackup₃' & >Hγ' & >%Hcons₃' & >●Hγₕ' & >●Hγᵣ & Hreginv & >●Hγ_vers & >%Hdomvers₃ & >%Hvers₃ & >●Hγᵢ' & >●Hγₒ & >%Hdomord₃ & >%Hinj₃ & >%Hidx₃ & >%Hmono₃ & >%Hubord₃)" "Hcl'".
       iDestruct (log_auth_auth_agree with "●Hγₕ ●Hγₕ'") as %<-.
       iDestruct (index_auth_auth_agree with "●Hγᵢ ●Hγᵢ'") as %<-.
