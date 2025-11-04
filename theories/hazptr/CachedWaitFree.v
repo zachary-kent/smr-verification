@@ -2186,7 +2186,9 @@ Qed.
                 request_inv γ γₗ γₑ γ_exp γd backup actual abstraction -∗
                   token γₜ -∗
                     £ 1 ={⊤ ∖ ↑readN ∖ ↑cached_wfN}=∗
-                      Φ #false ∗ request_inv γ γₗ γₑ γ_exp γd backup actual abstraction.
+                      Φ #false ∗ 
+                      Shield hazptr γd s (Validated lexp γ_exp (node expected) (length expected)) ∗
+                      request_inv γ γₗ γₑ γ_exp γd backup actual abstraction.
   Proof.
     iIntros (Hne Habs) "#Hcasinv Hlexp Hldes #Hregistered Hreqinv Hγₜ Hcredit".
     rewrite /request_inv.
@@ -2197,10 +2199,11 @@ Qed.
       iMod ("Hclose" with "[Hγₜ Hγₑ Hlin]") as "_".
       { rewrite /cas_inv. do 2 iRight. iFrame. }
       iMod (lc_fupd_elim_later with "Hcredit HΦ") as "HΦ".
-      iModIntro.
       iPoseProof ("HΦ" with "[$]") as "HΦ".
       iFrame "∗ # %".
       rewrite bool_decide_eq_false_2 //.
+      iFrame.
+      by iMod (lc_fupd_elim_later with "Hcredit' Hprotected") as "Hprotected".
     + simplify_eq. 
       by iCombine "Hlin Hlin'" gives %[_ ->%bool_decide_eq_true].
     + iCombine "Hγₜ Hlintok" gives %[].
