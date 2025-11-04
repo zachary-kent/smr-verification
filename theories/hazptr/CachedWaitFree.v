@@ -95,7 +95,7 @@ Section code.
         array_copy_to ("l" +ₗ #cache_off) "desired" #n;;
         (* Unlock *)
         "l" <- #2 + "ver";;
-        CmpXchg ("l" +ₗ #1) "backup'" (untag "backup'");;
+        CmpXchg ("l" +ₗ #1) "backup'" "backup'";;
         #()
       else #().
 
@@ -109,15 +109,20 @@ Section code.
       if: array_equal (Fst "old") "expected" #n then 
         if: array_equal "expected" "desired" #n then #true
         else
-          let: "backup'" := tag (array_clone "desired" #n) in
+          let: "backup'" := array_clone "desired" #n in
           let: "backup" := (Snd "old") in
-          if: (CAS ("l" +ₗ #backup_off) "backup" "backup'") || (CAS ("l" +ₗ #backup_off) (untag "backup") ("backup'")) then
-            hazptr.(hazard_domain_retire) "domain" "backup" #n;;
+          let: "shield'" := hazptr.(shield_new) "domain" in
+          hazptr.(shield_set) "shield'" "backup'";;
+          if: (CAS ("l" +ₗ #backup_off) "backup" (tag "backup'")) || (CAS ("l" +ₗ #backup_off) (untag "backup") (tag "backup'")) then
+            hazptr.(hazard_domain_retire) "domain" (untag "backup") #n;;
             try_validate n "l" "ver" "desired" "backup'";;
             hazptr.(shield_drop) "shield";;
+            hazptr.(shield_drop) "shield'";;
             #true
           else (
             hazptr.(shield_drop) "shield";;
+            hazptr.(shield_drop) "shield'";;
+            Free #n "backup'";;
             #false
           )
       else (
