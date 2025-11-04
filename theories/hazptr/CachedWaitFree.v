@@ -686,9 +686,9 @@ Section cached_wf.
   (* Definition log_tokens (log : gmap gname (list val)) : iProp Σ :=
     [∗ map] γ ↦ _ ∈ log, token γ. *)
 
-  Definition cas_inv (Φ : val → iProp Σ) (γ γₑ γₗ γₜ γ_exp γd : gname) (lexp lexp_src ldes : blk) (dq dq' : dfrac) (expected desired : list val) : iProp Σ :=
-      (£ 1 ∗ (lexp_src ↦∗{dq} expected ∗ ldes ↦∗{dq'} desired -∗ Φ #false) ∗ (∃ b : bool, ghost_var γₑ (1/2) b) ∗ ghost_var γₗ (1/2) false ∗ ∃ s, Shield hazptr γd s (Validated lexp γ_exp (node expected) (length expected))) (* The failing write has already been linearized and its atomic update has been consumed *)
-    ∨ (£ 2 ∗ AU_cas Φ γ expected desired lexp_src ldes dq dq' ∗ ghost_var γₑ (1/2) true ∗ ghost_var γₗ (1/2) true ∗ ∃ s, Shield hazptr γd s (Validated lexp γ_exp (node expected) (length expected)))
+  Definition cas_inv (Φ : val → iProp Σ) (γ γₑ γₗ γₜ γ_exp γd : gname) (lexp lexp_src ldes : blk) (dq dq' : dfrac) (expected desired : list val) s : iProp Σ :=
+      (£ 1 ∗ (lexp_src ↦∗{dq} expected ∗ ldes ↦∗{dq'} desired -∗ Φ #false) ∗ (∃ b : bool, ghost_var γₑ (1/2) b) ∗ ghost_var γₗ (1/2) false ∗ Shield hazptr γd s (Validated lexp γ_exp (node expected) (length expected))) (* The failing write has already been linearized and its atomic update has been consumed *)
+    ∨ (£ 2 ∗ AU_cas Φ γ expected desired lexp_src ldes dq dq' ∗ ghost_var γₑ (1/2) true ∗ ghost_var γₗ (1/2) true ∗ Shield hazptr γd s (Validated lexp γ_exp (node expected) (length expected)))
     ∨ (token γₜ ∗ (∃ b : bool, ghost_var γₑ (1/2) b) ∗ ∃ b : bool, ghost_var γₗ (1/2) b).  (* The failing write has linearized and returned *)
 
   (* Lemma log_tokens_impl log l γ :
@@ -720,9 +720,9 @@ Section cached_wf.
     ∃ lexp, ⌜abstraction !! γ_exp = Some lexp⌝ ∗
       ghost_var γₗ (1/2) (bool_decide (lactual = lexp)) ∗
       (* Note that the [lexp] bound here points to a copy of the expected value *)
-      ∃ (Φ : val → iProp Σ) (γₜ : gname) (lexp_src ldes : blk) (dq dq' : dfrac) (expected desired : list val),
+      ∃ (Φ : val → iProp Σ) (γₜ : gname) (lexp_src ldes : blk) (dq dq' : dfrac) (expected desired : list val) s,
         ghost_var γₑ (1/2) (bool_decide (actual = expected)) ∗
-        inv casN (cas_inv Φ γ γₑ γₗ γₜ γ_exp γd lexp lexp_src ldes dq dq' expected desired).
+        inv casN (cas_inv Φ γ γₑ γₗ γₜ γ_exp γd lexp lexp_src ldes dq dq' expected desired s).
 
   Definition registry_inv γ γd lactual actual (requests : list (gname * gname * gname)) (abstraction : gmap gname blk) : iProp Σ :=
     [∗ list] '(γₗ, γₑ, γ_exp) ∈ requests,
@@ -2174,23 +2174,23 @@ Qed.
       + simpl in *. inv Hsorted. apply (IH i j); auto. lia.
   Qed.
 
-  Lemma already_linearized Φ γ γₗ γₑ γᵣ γₜ (backup lexp lexp' ldes : loc) expected desired actual (dq dq' : dfrac) i used :
-    lexp' ≠ backup →
+  Lemma already_linearized Φ γ γₗ γₑ γᵣ γₜ γ_exp γd (backup lexp lexp_src ldes : blk) expected desired actual (dq dq' : dfrac) i abstraction :
+    lexp ≠ backup →
       (* inv readN (read_inv γ γᵥ γₕ γᵢ l (length expected)) -∗
         inv cached_wfN (cached_wf_inv γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ l) -∗ *)
-      inv casN (cas_inv Φ γ γₑ γₗ γₜ lexp ldes dq dq' expected desired) -∗
-        lexp ↦∗{dq} expected -∗
+      inv casN (cas_inv Φ γ γₑ γₗ γₜ γ_exp γd lexp lexp_src ldes dq dq' expected desired) -∗
+        lexp_src ↦∗{dq} expected -∗
           ldes ↦∗{dq'} desired -∗
-            registered γᵣ i γₗ γₑ lexp' -∗
-              request_inv γ γₗ γₑ backup lexp' actual used -∗
+            registered γᵣ i γₗ γₑ γ_exp -∗
+              request_inv γ γₗ γₑ γ_exp γd backup actual abstraction -∗
                 token γₜ -∗
                   £ 1 ={⊤ ∖ ↑readN ∖ ↑cached_wfN}=∗
-                    Φ #false ∗ request_inv γ γₗ γₑ backup lexp' actual used.
+                    Φ #false ∗request_inv γ γₗ γₑ γ_exp γd backup actual abstraction.
   Proof.
     iIntros (Hne) "#Hcasinv Hlexp Hldes #Hregistered Hreqinv Hγₜ Hcredit".
     rewrite /request_inv.
-    iDestruct "Hreqinv" as "(%Hused & Hlin & %Φ' & %γₜ' & %lexp'' & %ldes' & %dq₁ & %dq₁' & %expected' & %desired' & Hγₑ & _)".
-    iInv casN as "[(HΦ & [%b >Hγₑ'] & >Hlin') | [(>Hcredit' & AU & >Hγₑ' & >Hlin') | (>Htok & [%b >Hγₑ'] & [%b' >Hlin'])]]" "Hclose".
+    iDestruct "Hreqinv" as "(%lexp' & %Hlexp_abs & Hlin & %Φ' & %γₜ' & %lexp_src' & %ldes' & %dq₁ & %dq₁' & %expected' & %desired' & Hγₑ & _)".
+      iInv casN as "[(>Hcredit' & HΦ & [%b >Hγₑ'] & >Hlin' & %s &Hprotected) | [(>[Hcredit' Hcredit''] & AU & >Hγₑ' & >Hlin' & %s & Hprotected) | (>Hlintok & [%b >Hγₑ'] & [%b' >Hlin'])]]" "Hclose".
     + iCombine "Hlin Hlin'" gives %[_ Heq].
       iMod (ghost_var_update_halves (bool_decide (actual = expected)) with "Hγₑ Hγₑ'") as "[Hγₑ Hγₑ']". 
       iMod ("Hclose" with "[Hγₜ Hγₑ Hlin]") as "_".
