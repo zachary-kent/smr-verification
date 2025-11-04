@@ -2085,7 +2085,7 @@ From smr Require Import helpers hazptr.spec_hazptr hazptr.spec_stack hazptr.code
   Proof.
     intros. set_solver. *)
 
-  Lemma own_auth_split_self (dq : dfrac) (γ : gname) (m : gmap loc (agree (gname * list val))) :
+  Lemma own_auth_split_self (dq : dfrac) (γ : gname) (m : gmap gname (agree (list val))) :
     own γ (●{dq} m) ==∗ own γ (●{dq} m) ∗ own γ (◯ m).
   Proof.
     iIntros "H●".
@@ -2096,7 +2096,7 @@ From smr Require Import helpers hazptr.spec_hazptr hazptr.spec_stack hazptr.code
     by iFrame.
   Qed.
 
-  Lemma own_auth_split_self' (dq : dfrac) (γ : gname) (m : gmap loc (agree nat)) :
+  Lemma own_auth_split_self' (dq : dfrac) (γ : gname) (m : gmap gname (agree (list val))) :
     own γ (●{dq} m) ==∗ own γ (●{dq} m) ∗ own γ (◯ m).
   Proof.
     iIntros "H●".
@@ -2107,7 +2107,7 @@ From smr Require Import helpers hazptr.spec_hazptr hazptr.spec_stack hazptr.code
     by iFrame.
   Qed.
 
-  Lemma own_auth_split_self'' (dq : dfrac) (γ : gname) (m : gmap nat (agree loc)) :
+  Lemma own_auth_split_self'' (dq : dfrac) (γ : gname) (m : gmap gname (agree (list val))) :
     own γ (●{dq} m) ==∗ own γ (●{dq} m) ∗ own γ (◯ m).
   Proof.
     iIntros "H●".
