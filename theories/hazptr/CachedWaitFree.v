@@ -2060,7 +2060,7 @@ From smr Require Import helpers hazptr.spec_hazptr hazptr.spec_stack hazptr.code
         iMod ("Hclose" with "[-]") as "_".
         { iLeft. iFrame. }
         done.
-      + iMod (ghost_var_update_halves (bool_decide (lactual' = lexp)) with "Hlin Hlin'") as "[Hlin Hlin']".
+      + iMod (ghost_var_update_halves (bool_decide (l_actual' = lexp)) with "Hlin Hlin'") as "[Hlin Hlin']".
         iMod (ghost_var_update_halves (bool_decide (actual' = expected)) with "Hγₑ Hγₑ'") as "[Hγₑ Hγₑ']".
         iFrame "∗ # %".
         iMod ("Hclose" with "[-]") as "_".
