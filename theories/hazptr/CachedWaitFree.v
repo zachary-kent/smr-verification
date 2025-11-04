@@ -2023,9 +2023,9 @@ From smr Require Import helpers hazptr.spec_hazptr hazptr.spec_stack hazptr.code
     - by iFrame.
     - rewrite /registry_inv. do 2 rewrite -> big_sepL_cons by done.
       (* (%Hfresh & Hlin & %Φ & %γₜ' & %lexp' & %ldes & %dq & %dq' & %expected & %desired & Hγₑ & #Hwinv) *)
-      iDestruct "Hreqs" as "[(%lexp & %Hlexp_abs & Hlin & %Φ & %γₜ & %lexp' & %ldes & %dq & %dq' & %expected & %desired & Hγₑ & #Hcasinv) Hreqs]".
+      iDestruct "Hreqs" as "[(%lexp & %Hlexp_abs & Hlin & %Φ & %γₜ & %lexp' & %ldes & %dq & %dq' & %expected & %desired & %s & Hγₑ & #Hcasinv) Hreqs]".
       iMod ("IH" with "Htok Hmanaged Hlogtokens Hγ Hreqs") as "(Htok & Hmanaged & Hlogtokens & Hγ & Hreqinv)".
-      iInv casN as "[(>Hcredit & HΦ & [%b >Hγₑ'] & >Hlin' & %s &Hprotected) | [(>[Hcredit Hcredit'] & AU & >Hγₑ' & >Hlin' & %s & Hprotected) | (>Hlintok & [%b >Hγₑ'] & [%b' >Hlin'])]]" "Hclose".
+      iInv casN as "[(>Hcredit & HΦ & [%b >Hγₑ'] & >Hlin' & Hprotected) | [(>[Hcredit Hcredit'] & AU & >Hγₑ' & >Hlin' & Hprotected) | (>Hlintok & [%b >Hγₑ'] & [%b' >Hlin'])]]" "Hclose".
       + iCombine "Hlin Hlin'" gives %[_ ->].
         iMod (ghost_var_update_halves (bool_decide (actual' = expected)) with "Hγₑ Hγₑ'") as "[Hγₑ Hγₑ']".
         destruct (decide (l_actual' = lexp)) as [-> | Hneqγ].
@@ -2174,24 +2174,25 @@ Qed.
       + simpl in *. inv Hsorted. apply (IH i j); auto. lia.
   Qed.
 
-  Lemma already_linearized Φ γ γₗ γₑ γᵣ γₜ γ_exp γd (backup lexp lexp_src ldes : blk) expected desired actual (dq dq' : dfrac) i abstraction :
+  Lemma already_linearized Φ γ γₗ γₑ γᵣ γₜ γ_exp γd (backup lexp lexp_src ldes : blk) expected desired actual (dq dq' : dfrac) i abstraction s :
     lexp ≠ backup →
+      abstraction !! γ_exp = Some lexp →
       (* inv readN (read_inv γ γᵥ γₕ γᵢ l (length expected)) -∗
         inv cached_wfN (cached_wf_inv γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ l) -∗ *)
-      inv casN (cas_inv Φ γ γₑ γₗ γₜ γ_exp γd lexp lexp_src ldes dq dq' expected desired) -∗
-        lexp_src ↦∗{dq} expected -∗
-          ldes ↦∗{dq'} desired -∗
-            registered γᵣ i γₗ γₑ γ_exp -∗
-              request_inv γ γₗ γₑ γ_exp γd backup actual abstraction -∗
-                token γₜ -∗
-                  £ 1 ={⊤ ∖ ↑readN ∖ ↑cached_wfN}=∗
-                    Φ #false ∗request_inv γ γₗ γₑ γ_exp γd backup actual abstraction.
+        inv casN (cas_inv Φ γ γₑ γₗ γₜ γ_exp γd lexp lexp_src ldes dq dq' expected desired s) -∗
+          lexp_src ↦∗{dq} expected -∗
+            ldes ↦∗{dq'} desired -∗
+              registered γᵣ i γₗ γₑ γ_exp -∗
+                request_inv γ γₗ γₑ γ_exp γd backup actual abstraction -∗
+                  token γₜ -∗
+                    £ 1 ={⊤ ∖ ↑readN ∖ ↑cached_wfN}=∗
+                      Φ #false ∗ request_inv γ γₗ γₑ γ_exp γd backup actual abstraction.
   Proof.
-    iIntros (Hne) "#Hcasinv Hlexp Hldes #Hregistered Hreqinv Hγₜ Hcredit".
+    iIntros (Hne Habs) "#Hcasinv Hlexp Hldes #Hregistered Hreqinv Hγₜ Hcredit".
     rewrite /request_inv.
-    iDestruct "Hreqinv" as "(%lexp' & %Hlexp_abs & Hlin & %Φ' & %γₜ' & %lexp_src' & %ldes' & %dq₁ & %dq₁' & %expected' & %desired' & Hγₑ & _)".
-      iInv casN as "[(>Hcredit' & HΦ & [%b >Hγₑ'] & >Hlin' & %s &Hprotected) | [(>[Hcredit' Hcredit''] & AU & >Hγₑ' & >Hlin' & %s & Hprotected) | (>Hlintok & [%b >Hγₑ'] & [%b' >Hlin'])]]" "Hclose".
-    + iCombine "Hlin Hlin'" gives %[_ Heq].
+    iDestruct "Hreqinv" as "(%lexp' & %Hlexp_abs & Hlin & %Φ' & %γₜ' & %lexp_src' & %ldes' & %dq₁ & %dq₁' & %expected' & %desired' & %s' & Hγₑ & _)".
+    iInv "Hcasinv" as "[(>Hcredit' & HΦ & [%b >Hγₑ'] & >Hlin' & Hprotected) | [(>[Hcredit' Hcredit''] & AU & >Hγₑ' & >Hlin' & Hprotected) | (>Hlintok & [%b >Hγₑ'] & [%b' >Hlin'])]]" "Hclose".
+    + iCombine "Hlin Hlin'" gives %[_ Hneq%bool_decide_eq_false].
       iMod (ghost_var_update_halves (bool_decide (actual = expected)) with "Hγₑ Hγₑ'") as "[Hγₑ Hγₑ']". 
       iMod ("Hclose" with "[Hγₜ Hγₑ Hlin]") as "_".
       { rewrite /cas_inv. do 2 iRight. iFrame. }
@@ -2200,9 +2201,9 @@ Qed.
       iPoseProof ("HΦ" with "[$]") as "HΦ".
       iFrame "∗ # %".
       rewrite bool_decide_eq_false_2 //.
-    + rewrite bool_decide_eq_false_2 //.
-      iCombine "Hlin Hlin'" gives %[_ [=]].
-    + iCombine "Hγₜ Htok" gives %[].
+    + simplify_eq. 
+      by iCombine "Hlin Hlin'" gives %[_ ->%bool_decide_eq_true].
+    + iCombine "Hγₜ Hlintok" gives %[].
   Qed.
 
   Global Instance GMapFMap`{EqDecision K, Countable K} `{V} : FMap (gmap K).
