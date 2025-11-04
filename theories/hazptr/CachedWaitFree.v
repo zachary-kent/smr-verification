@@ -1798,9 +1798,9 @@ From smr Require Import helpers hazptr.spec_hazptr hazptr.spec_stack hazptr.code
         iModIntro. wp_pures.
         change #(Some (Loc.blk_to_loc backup₃) &ₜ 0) with #backup₃.
         replace (length actual) with (length vdst) by lia.
-        wp_apply (wp_array_copy_to_protected _ _ _  actual₃ with "[$Hdst Hprotected]").
+        wp_apply (wp_array_copy_to_protected _ _ _  actual₃ with "[$]").
         { lia. }
-        { by replace (length actual₃) with (length vdst) by lia. }
+        { lia. }
         iIntros "[Hdst S]". wp_pures.
         wp_apply (hazptr.(shield_drop_spec) with "Hd_domain S") as "_".
         { set_solver. }
@@ -1849,9 +1849,9 @@ From smr Require Import helpers hazptr.spec_hazptr hazptr.spec_stack hazptr.code
       iModIntro. wp_pures.
       change #(Some (Loc.blk_to_loc backup₂) &ₜ 0) with #backup₂.
       replace n with (length vdst) by lia.
-      wp_apply (wp_array_copy_to_protected _ _ _  actual₂ with "[$Hdst Hprotected]").
+      wp_apply (wp_array_copy_to_protected _ _ _  actual₂ with "[$Hdst $Hprotected]").
       { lia. }
-      { by replace (length actual₂) with (length vdst) by lia. }
+      { lia. }
       iIntros "[Hdst S]". wp_pures.
       wp_apply (hazptr.(shield_drop_spec) with "Hd_domain S") as "_".
       { set_solver. }
@@ -1994,29 +1994,29 @@ From smr Require Import helpers hazptr.spec_hazptr hazptr.spec_stack hazptr.code
   Qed.
 
   (* It is possible to linearize pending writers while maintaing the registry invariant *)
-  Lemma linearize_cas γ (lactual lactual' : loc) (actual actual' : list val) requests (log : gmap loc (gname * list val)) (γₜ : gname) :
-    length actual > 0 →
+  Lemma linearize_cas γ γd (γ_actual γ_actual' : gname) (l_actual l_actual' : blk) (actual actual' : list val) requests abstraction n :
+    n > 0 → length actual = n → length actual' = n →
     (* The current and previous logical state should be distinct if swapping backup pointer *)
     actual ≠ actual' →
-    (* Both the current and new logical state are comprised of the same number of bytes *)
-    length actual = length actual' → 
     (* The current backup pointer has been logged *)
-    fst <$> log !! lactual' = None →
+    token γ_actual' -∗
+    (* New backup managed by hazard pointers *)
+    hazptr.(Managed) γd l_actual' γ_actual' n (node actual') ∗
     (* Points-to predicate of every previously logged backup *)
     log_tokens log -∗
     (* The logical state has not yet been updated to the new state *)
-    ghost_var γ (1/2) (lactual', actual') -∗
+    ghost_var γ (1/2) (γ_actual', actual') -∗
     (* The registry invariant is satisfied for the current logical state *)
-    registry_inv γ lactual actual requests (dom log)
+    registry_inv γ γd l_actual actual requests abstraction
     (* We can take frame-preserving updated that linearize the successful CAS,
        alongside all of the other failing CAS's *)
     ={⊤ ∖ ↑readN ∖ ↑cached_wfN}=∗
       (* Points-to predicate of every previously logged backup *)
       log_tokens log ∗
       (* Update new logical state to correspond to logical CAS *)
-      ghost_var γ (1/2) (lactual', actual') ∗
+      ghost_var γ (1/2) (γ_actual', actual') ∗
       (* Invariant corresponding to new logical state *)
-      registry_inv γ lactual' actual' requests (dom log).
+      registry_inv γ γd l_actual' actual' requests abstraction.
   Proof.
     iIntros (Hpos Hne Hlen Hlogged) "Hlog Hγ Hreqs".
     iInduction requests as [|[[γₗ γₑ] lexp] reqs'] "IH".
