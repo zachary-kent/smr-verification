@@ -688,7 +688,7 @@ Section cached_wf.
 
 
   Definition cas_inv (Φ : val → iProp Σ) (γ γₑ γₗ γₜ γ_exp γd : gname) (lexp ldes : blk) (dq dq' : dfrac) (expected desired : list val) : iProp Σ :=
-      ((lexp ↦∗{dq} expected ∗ ldes ↦∗{dq'} desired -∗ Φ #false) ∗ (∃ b : bool, ghost_var γₑ (1/2) b) ∗ ghost_var γₗ (1/2) false) (* The failing write has already been linearized and its atomic update has been consumed *)
+      ((lexp ↦∗{dq} expected ∗ ldes ↦∗{dq'} desired -∗ Φ #false) ∗ (∃ b : bool, ghost_var γₑ (1/2) b) ∗ ghost_var γₗ (1/2) false ∗ ∃ s, Shield hazptr γd s (Validated lexp γ_exp (node expected) (length expected))) (* The failing write has already been linearized and its atomic update has been consumed *)
     ∨ (£ 1 ∗ AU_cas Φ γ expected desired lexp ldes dq dq' ∗ ghost_var γₑ (1/2) true ∗ ghost_var γₗ (1/2) true ∗ ∃ s, Shield hazptr γd s (Validated lexp γ_exp (node expected) (length expected)))
     ∨ (token γₜ ∗ (∃ b : bool, ghost_var γₑ (1/2) b) ∗ ∃ b : bool, ghost_var γₗ (1/2) b).  (* The failing write has linearized and returned *)
 
@@ -2001,7 +2001,7 @@ From smr Require Import helpers hazptr.spec_hazptr hazptr.spec_stack hazptr.code
     (* The current backup pointer has been logged *)
     token γ_actual' -∗
     (* New backup managed by hazard pointers *)
-    hazptr.(Managed) γd l_actual' γ_actual' n (node actual') ∗
+    hazptr.(Managed) γd l_actual' γ_actual' n (node actual') -∗
     (* Points-to predicate of every previously logged backup *)
     log_tokens (dom abstraction) -∗
     (* The logical state has not yet been updated to the new state *)
@@ -2011,6 +2011,8 @@ From smr Require Import helpers hazptr.spec_hazptr hazptr.spec_stack hazptr.code
     (* We can take frame-preserving updated that linearize the successful CAS,
        alongside all of the other failing CAS's *)
     ={⊤ ∖ ↑readN ∖ ↑cached_wfN}=∗
+      token γ_actual' ∗
+      hazptr.(Managed) γd l_actual' γ_actual' n (node actual') ∗
       (* Points-to predicate of every previously logged backup *)
       log_tokens (dom abstraction) ∗
       (* Update new logical state to correspond to logical CAS *)
@@ -2018,20 +2020,24 @@ From smr Require Import helpers hazptr.spec_hazptr hazptr.spec_stack hazptr.code
       (* Invariant corresponding to new logical state *)
       registry_inv γ γd l_actual' actual' requests abstraction.
   Proof.
-    iIntros (Hpos Hne Hlen Hlogged) "Hlog Hγ Hreqs".
-    iInduction requests as [|[[γₗ γₑ] lexp] reqs'] "IH".
+    iIntros (Hpos Hlen Hle' Hne) "Htok Hmanaged Hlogtokens Hγ Hreqs". simplify_eq.
+    iInduction requests as [|[[γₗ γₑ] γ_exp] reqsuests] "IH".
     - by iFrame.
     - rewrite /registry_inv. do 2 rewrite -> big_sepL_cons by done.
-      iDestruct "Hreqs" as "[(%Hfresh & Hlin & %Φ & %γₜ' & %lexp' & %ldes & %dq & %dq' & %expected & %desired & Hγₑ & #Hwinv) Hreqs']".
-      iMod ("IH" with "Hlog Hγ Hreqs'") as "(Hlog & Hγ & Hreqinv)".
-      iInv casN as "[(HΦ & [%b >Hγₑ'] & >Hlin') | [(>Hcredit & AU & >Hγₑ' & >Hlin') | (>Htok & [%b >Hγₑ'] & [%b' >Hlin'])]]" "Hclose".
+      (* (%Hfresh & Hlin & %Φ & %γₜ' & %lexp' & %ldes & %dq & %dq' & %expected & %desired & Hγₑ & #Hwinv) *)
+      iDestruct "Hreqs" as "[(%lexp & %Hlexp_abs & Hlin & %Φ & %γₜ & %lexp' & %ldes & %dq & %dq' & %expected & %desired & Hγₑ & Hcasinv) Hreqs]".
+      iMod ("IH" with "Htok Hmanaged Hlogtokens Hγ Hreqs") as "(Htok & Hmanaged & Hlogtokens & Hγ & Hreqinv)".
+      iInv casN as "[(HΦ & [%b >Hγₑ'] & >Hlin') | [(>Hcredit & AU & >Hγₑ' & Hlin' & Hprotected) | (>Hlintok & [%b >Hγₑ'] & [%b' >Hlin'])]]" "Hclose".
       + iCombine "Hlin Hlin'" gives %[_ ->].
         iMod (ghost_var_update_halves (bool_decide (actual' = expected)) with "Hγₑ Hγₑ'") as "[Hγₑ Hγₑ']". 
         (* rewrite bool_decide_eq_false in Hneq. *)
         iMod ("Hclose" with "[HΦ Hγₑ Hlin]") as "_".
         { iLeft. iFrame. }
-        destruct (decide (lactual' = lexp)) as [-> | Hneq].
-        * apply elem_of_dom in Hfresh as [[γₜ'' value] Hvalue].
+        iFrame "∗ # %".
+        rewrite /request_inv.
+        destruct (decide (γ_actual' = γ_exp)) as [-> | Hneq].
+        * 
+          apply elem_of_dom in Hfresh as [[γₜ'' value] Hvalue].
           by destruct (log !! lexp).
         * iFrame "∗ # %".
           rewrite /request_inv.
