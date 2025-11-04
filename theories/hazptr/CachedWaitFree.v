@@ -877,45 +877,48 @@ Section cached_wf.
       + rewrite Forall_app; auto.
   Qed.
 
-Definition cached_wf_inv (γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ γ_abs γd : gname) (l : loc) (len : nat) : iProp Σ :=
-  ∃ (ver : nat) (log : gmap gname (list val)) (abstraction : gmap gname blk)
-    (actual : list val) (γ_backup : gname)
-    (backup : blk) (requests : list (gname * gname * gname))
-    (vers : gmap gname nat) (index : list gname) (order : gmap gname nat) (idx : nat) (t : nat),
-    (* Ownership of remaining quarter of logical counter *)
-    mono_nat_auth_own γᵥ (1/2) ver ∗
-    (* Ownership of the backup location (stored with a tag bit) *)
-    (l +ₗ backup_off) ↦{# 1/2} #(Some (Loc.blk_to_loc backup) &ₜ t) ∗
-    (* Ownership of the logical state (remaining quarter) *)
-    ghost_var γ (1/4) (γ_backup, actual) ∗
-    ⌜log !! γ_backup = Some actual⌝ ∗
-    ⌜abstraction !! γ_backup = Some backup⌝ ∗
-    (* Own other half of log in top-level invariant *)
-    log_auth_own γₕ (1/2) log ∗
-    (* Own half of the abstraction map to share with the read invariant *)
-    abstraction_auth_own γ_abs (1/2) abstraction ∗
-    (* Ownership of request registry *)
-    registry γᵣ requests ∗
-    (* State of request registry against the current abstraction *)
-    registry_inv γ γd backup actual requests abstraction ∗
-    (* Authoritative ownership of version mapping *)
-    vers_auth_own γ_vers 1 vers ∗
-    (* Authoritative ownership of the logical ordering *)
-    (* The history map tracks which versions have been published. *)
-    ⌜dom vers ⊂ dom log⌝ ∗
-    ⌜if bool_decide (1 < size log) then
-        (∃ ver',
-          vers !! γ_backup = Some ver' ∧
-          ver' ≤ ver ∧
-          map_Forall (λ _ ver'', ver'' ≤ ver') vers ∧
-          if bool_decide (ver = ver') then t ≠ 0 else True)
-      else vers = ∅⌝ ∗
-    (* Own other half of index *)
-    index_auth_own γᵢ (1/2) index ∗
-    vers_auth_own γₒ 1 order ∗
-    ⌜dom order = dom log⌝ ∗
-    ⌜gmap_injective order⌝ ∗
-    ⌜order !! γ_backup = Some idx⌝.
+  Definition cached_wf_inv (γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ γ_abs γd : gname) (l : loc) (len : nat) : iProp Σ :=
+    ∃ (ver : nat) (log : gmap gname (list val)) (abstraction : gmap gname blk)
+      (actual : list val) (γ_backup : gname)
+      (backup : blk) (requests : list (gname * gname * gname))
+      (vers : gmap gname nat) (index : list gname) (order : gmap gname nat) (idx : nat) (t : nat),
+      (* Ownership of remaining quarter of logical counter *)
+      mono_nat_auth_own γᵥ (1/2) ver ∗
+      (* Ownership of the backup location (stored with a tag bit) *)
+      (l +ₗ backup_off) ↦{# 1/2} #(Some (Loc.blk_to_loc backup) &ₜ t) ∗
+      (* Ownership of the logical state (remaining quarter) *)
+      ghost_var γ (1/4) (γ_backup, actual) ∗
+      ⌜log !! γ_backup = Some actual⌝ ∗
+      ⌜abstraction !! γ_backup = Some backup⌝ ∗
+      (* Own other half of log in top-level invariant *)
+      log_auth_own γₕ (1/2) log ∗
+      (* Own half of the abstraction map to share with the read invariant *)
+      abstraction_auth_own γ_abs (1/2) abstraction ∗
+      (* Ownership of request registry *)
+      registry γᵣ requests ∗
+      (* State of request registry against the current abstraction *)
+      registry_inv γ γd backup actual requests abstraction ∗
+      (* Authoritative ownership of version mapping *)
+      vers_auth_own γ_vers 1 vers ∗
+      (* Authoritative ownership of the logical ordering *)
+      (* The history map tracks which versions have been published. *)
+      ⌜dom vers ⊂ dom log⌝ ∗
+      ⌜if bool_decide (1 < size log) then
+          (∃ ver',
+            vers !! γ_backup = Some ver' ∧
+            ver' ≤ ver ∧
+            map_Forall (λ _ ver'', ver'' ≤ ver') vers ∧
+            if bool_decide (ver = ver') then t ≠ 0 else True)
+        else vers = ∅⌝ ∗
+      (* Own other half of index *)
+      index_auth_own γᵢ (1/2) index ∗
+      vers_auth_own γₒ 1 order ∗
+      ⌜dom order = dom log⌝ ∗
+      ⌜gmap_injective order⌝ ∗
+      ⌜order !! γ_backup = Some idx⌝ ∗
+      ⌜StronglySorted (gmap_mono order) index⌝ ∗
+      ⌜map_Forall (λ _ idx', idx' ≤ idx) order⌝.
+
 
   Global Instance pointsto_array_persistent l vs : Persistent (l ↦∗□ vs).
   Proof.
@@ -2208,10 +2211,10 @@ Qed.
     + iCombine "Hγₜ Hlintok" gives %[].
   Qed.
 
-Definition cached_wf_inv' (γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ γ_abs γd : gname) (l : loc) (len : nat) : iProp Σ :=
+(* Definition cached_wf_inv (γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ γ_abs γd : gname) (l : loc) (len : nat) : iProp Σ :=
   ∃ (ver : nat) (log : gmap gname (list val)) (abstraction : gmap gname blk)
-    (actual cache : list val) (γ_backup γ_backup' : gname)
-    (backup backup' : blk) (requests : list (gname * gname * gname))
+    (actual : list val) (γ_backup : gname)
+    (backup : blk) (requests : list (gname * gname * gname))
     (vers : gmap gname nat) (index : list gname) (order : gmap gname nat) (idx : nat) (t : nat),
     (* Ownership of remaining quarter of logical counter *)
     mono_nat_auth_own γᵥ (1/2) ver ∗
@@ -2219,6 +2222,8 @@ Definition cached_wf_inv' (γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ γ_abs γd :
     (l +ₗ backup_off) ↦{# 1/2} #(Some (Loc.blk_to_loc backup) &ₜ t) ∗
     (* Ownership of the logical state (remaining quarter) *)
     ghost_var γ (1/4) (γ_backup, actual) ∗
+    ⌜log !! γ_backup = Some actual⌝ ∗
+    ⌜abstraction !! γ_backup = Some backup⌝ ∗
     (* Own other half of log in top-level invariant *)
     log_auth_own γₕ (1/2) log ∗
     (* Own half of the abstraction map to share with the read invariant *)
@@ -2229,22 +2234,7 @@ Definition cached_wf_inv' (γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ γ_abs γd :
     registry_inv γ γd backup actual requests abstraction ∗
     (* Authoritative ownership of version mapping *)
     vers_auth_own γ_vers 1 vers ∗
-    (* Own other half of index *)
-    index_auth_own γᵢ (1/2) index ∗
     (* Authoritative ownership of the logical ordering *)
-    vers_auth_own γₒ 1 order ∗
-    (* Structural facts mirroring the read invariant *)
-    ⌜Forall val_is_unboxed actual⌝ ∗
-    ⌜length actual = len⌝ ∗
-    ⌜length cache = len⌝ ∗
-    ⌜map_Forall (λ _ value, length value = len) log⌝ ∗
-    ⌜log !! γ_backup = Some actual⌝ ∗
-    ⌜abstraction !! γ_backup = Some backup⌝ ∗
-    ⌜abstraction !! γ_backup' = Some backup'⌝ ∗
-    ⌜dom log = dom abstraction⌝ ∗
-    ⌜length index = S (Nat.div2 (S ver))⌝ ∗
-    (* ⌜NoDup index⌝ ∗ *)
-    (* ⌜Forall (.∈ dom log) index⌝ ∗ *)
     (* The history map tracks which versions have been published. *)
     ⌜dom vers ⊂ dom log⌝ ∗
     ⌜if bool_decide (1 < size log) then
@@ -2252,16 +2242,15 @@ Definition cached_wf_inv' (γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ γ_abs γd :
           vers !! γ_backup = Some ver' ∧
           ver' ≤ ver ∧
           map_Forall (λ _ ver'', ver'' ≤ ver') vers ∧
-          if bool_decide (ver = ver') then t = 0 else True)
+          if bool_decide (ver = ver') then t ≠ 0 else True)
       else vers = ∅⌝ ∗
-    (* Relationship between the cached value and the currently installed backup. *)
-    ⌜if Nat.even ver then log !! γ_backup' = Some cache else t ≠ 0⌝ ∗
-    (* Ordering metadata over logical backups. *)
+    (* Own other half of index *)
+    index_auth_own γᵢ (1/2) index ∗
+    vers_auth_own γₒ 1 order ∗
     ⌜dom order = dom log⌝ ∗
     ⌜gmap_injective order⌝ ∗
-    ⌜order !! γ_backup = Some idx⌝ ∗
-    ⌜StronglySorted (gmap_mono order) index⌝ ∗
-    ⌜map_Forall (λ _ idx', idx' ≤ idx) order⌝.
+    ⌜order !! γ_backup = Some idx⌝ *)
+
 
   Lemma wp_try_validate (γ γᵥ γₕ γᵣ γᵢ γ_val γ_vers γₒ γd γ_abs γ_backup : gname) (l l_desired backup : blk) (dq : dfrac)
                         (desired : list val) (ver ver₂ idx₂ : nat) (index₂ : list gname)
@@ -2292,7 +2281,7 @@ Definition cached_wf_inv' (γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ γ_abs γd :
       wp_pures.
       wp_bind (CmpXchg _ _ _).
       iInv readN as "(%ver₃ & %log₃ & %abstraction₃ & %actual₃ & %cache₃ & %γ_backup₃ & %γ_backup₃' & %backup₃ & %backup₃' & %index₃ & %validated₃ & %t₃ & >Hver & >Hbackup_ptr & >Hγ & >%Hunboxed₃ & Hbackup_managed₃ & >%Hindex₃ & >%Htag₃ & >%Hlenactual₃ & >%Hlencache₃ & >%Hloglen₃ & Hlog & >%Hlogged₃ & >●Hlog & >●Hγ_abs & >%Habs_backup₃ & >%Habs_backup'₃ & >%Hlenᵢ₃ & >%Hnodup₃ & >%Hrange₃ & >●Hγᵢ & >●Hγᵥ & >Hcache & >%Hcons₃ & Hlock & >●Hγ_val & >%Hvalidated_iff₃ & >%Hvalidated_sub₃ & >%Hdom_eq₃)" "Hcl".
-      iInv cached_wfN as "(%ver'' & %log₃' & %abstraction₃' & %actual₃' & %marked_backup₃' & %backup₃'' & %requests₃ & %vers₃ & %index₃' & %order₃ & %idx₃ & >●Hγᵥ' & >Hbackup₃' & >Hγ' & >%Hcons₃' & >●Hγₕ' & >●Hγᵣ & Hreginv & >●Hγ_vers & >%Hdomvers₃ & >%Hvers₃ & >●Hγᵢ' & >●Hγₒ & >%Hdomord₃ & >%Hinj₃ & >%Hidx₃ & >%Hmono₃ & >%Hubord₃)" "Hcl'".
+      iInv cached_wfN as "(%ver'' & %log₃' & %abstraction₃' & %actual₃' & %γ_backup₃'' & %backup₃'' & %requests₃ & %vers₃ & %index₃' & %order₃ & %idx₃ & %t₃' & >●Hγᵥ' & >Hbackup₃' & >Hγ' & >%Hlog₃' & >%Habs₃' & >●Hγₕ' & >●Hγ_abs' & >●Hγᵣ & Hreginv & >●Hγ_vers & >%Hdomvers₃ & >%Hvers₃ & >●Hγᵢ' & >●Hγₒ & >%Hdomord₃ & >%Hinj₃ & >%Hidx₃ & >%Hmono₃ & >%Hubord₃)" "Hcl'".
       
       (ver : nat) (log : gmap gname (list val)) (abstraction : gmap gname blk)
     (actual cache : list val) (γ_backup γ_backup' : gname)
