@@ -102,6 +102,7 @@ Section code.
   Definition cas (n : nat) : val :=
     λ: "l" "expected" "desired",
       let: "ver" := !("l" +ₗ #version_off) in
+      let: "domain" := !("l" +ₗ #domain_off) in
       let: "shield" := hazptr.(shield_new) "domain" in
       (* [old] is pair of [(data, backup)] *)
       let: "old" := read' n "l" "ver" "shield" in
@@ -111,10 +112,18 @@ Section code.
           let: "backup'" := tag (array_clone "desired" #n) in
           let: "backup" := (Snd "old") in
           if: (CAS ("l" +ₗ #backup_off) "backup" "backup'") || (CAS ("l" +ₗ #backup_off) (untag "backup") ("backup'")) then
+            hazptr.(hazard_domain_retire) "domain" "backup" #n;;
             try_validate n "l" "ver" "desired" "backup'";;
+            hazptr.(shield_drop) "shield";;
             #true
-          else #false
-      else #false.
+          else (
+            hazptr.(shield_drop) "shield";;
+            #false
+          )
+      else (
+        hazptr.(shield_drop) "shield";;
+        #false
+      ).
 
 End code.
 
@@ -2208,9 +2217,6 @@ Qed.
       by iCombine "Hlin Hlin'" gives %[_ ->%bool_decide_eq_true].
     + iCombine "Hγₜ Hlintok" gives %[].
   Qed.
-
-  Global Instance GMapFMap`{EqDecision K, Countable K} `{V} : FMap (gmap K).
-  Proof. apply _. Qed.
 
   Lemma wp_try_validate (γ γᵥ γₕ γᵣ γᵢ γ_val γ_vers γₒ γₚ' : gname) (l ldes ldes' : loc) (dq : dfrac)
                         (expected desired : list val) (ver ver₂ idx₂ : nat) (index₂ : list gname)
