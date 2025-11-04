@@ -613,8 +613,8 @@ Section cached_wf.
     rewrite -list_lookup_fmap /= -lookup_map_seq_0 Hvs'' //.
   Qed.
 
-  Definition log_tokens (log : gmap gname (list val)) : iProp Σ :=
-    [∗ map] γ ↦ _ ∈ log, token γ.
+  Definition log_tokens (γs : gset gname) : iProp Σ :=
+    [∗ set] γ ∈ γs, token γ.
 
   Definition node actual (_ : blk) (lv : list val) (_ : gname) : iProp Σ := ⌜lv = actual⌝.
 
@@ -642,7 +642,7 @@ Section cached_wf.
       ⌜map_Forall (λ _  value, length value = len) log⌝ ∗
       (* The version number is twice (or one greater than twice) than number of versions *) 
       (* For every pair of (backup', cache') in the log, we have ownership of the corresponding points-to *)
-      log_tokens log ∗
+      log_tokens (dom log) ∗
       (* The last item in the log corresponds to the currently installed backup pointer *)
       ⌜log !! γ_backup = Some actual⌝ ∗
       (* Store half authoritative ownership of the log in the read invariant *)
@@ -702,19 +702,19 @@ Section cached_wf.
     done. 
   Qed. *)
 
-  Lemma log_tokens_impl log l value :
-    log !! l = Some value → log_tokens log -∗ token l.
+  Lemma log_tokens_impl log l :
+    l ∈ log → log_tokens log -∗ token l.
   Proof.
     iIntros (Hbound) "Hlog".
-    iPoseProof (big_sepM_lookup with "Hlog") as "H /=".
+    iPoseProof (big_sepS_elem_of with "Hlog") as "H /=".
     { done. }
     done. 
   Qed.
 
-  Lemma log_tokens_singleton l  value :
-    log_tokens {[ l := value ]} ⊣⊢ token l.
+  Lemma log_tokens_singleton l :
+    log_tokens {[ l ]} ⊣⊢ token l.
   Proof.
-    rewrite /log_tokens big_sepM_singleton //.
+    rewrite /log_tokens big_sepS_singleton //.
   Qed.
 
   Definition request_inv (γ γₗ γₑ γ_exp γd : gname) (lactual : blk) (actual : list val) (abstraction : gmap gname blk) : iProp Σ :=
@@ -1433,7 +1433,7 @@ Lemma gmap_injective_insert `{Countable K, Countable V} (k : K) (v : V) (m : gma
       repeat iSplit; try done.
       { rewrite -Nat.even_spec //=. }
       { rewrite map_Forall_singleton //. }
-      { rewrite log_tokens_singleton //. }
+      { rewrite dom_singleton_L log_tokens_singleton //. }
       { rewrite lookup_singleton //. }
       { rewrite lookup_singleton //. }
       { rewrite lookup_singleton //. }
