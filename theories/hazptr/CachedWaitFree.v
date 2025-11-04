@@ -2003,7 +2003,7 @@ From smr Require Import helpers hazptr.spec_hazptr hazptr.spec_stack hazptr.code
     (* New backup managed by hazard pointers *)
     hazptr.(Managed) γd l_actual' γ_actual' n (node actual') ∗
     (* Points-to predicate of every previously logged backup *)
-    log_tokens log -∗
+    log_tokens (dom abstraction) -∗
     (* The logical state has not yet been updated to the new state *)
     ghost_var γ (1/2) (γ_actual', actual') -∗
     (* The registry invariant is satisfied for the current logical state *)
@@ -2012,7 +2012,7 @@ From smr Require Import helpers hazptr.spec_hazptr hazptr.spec_stack hazptr.code
        alongside all of the other failing CAS's *)
     ={⊤ ∖ ↑readN ∖ ↑cached_wfN}=∗
       (* Points-to predicate of every previously logged backup *)
-      log_tokens log ∗
+      log_tokens (dom abstraction) ∗
       (* Update new logical state to correspond to logical CAS *)
       ghost_var γ (1/2) (γ_actual', actual') ∗
       (* Invariant corresponding to new logical state *)
