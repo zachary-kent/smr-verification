@@ -2068,17 +2068,17 @@ From smr Require Import helpers hazptr.spec_hazptr hazptr.spec_stack hazptr.code
         done.
   Qed.
 
-  Lemma log_tokens_update log l γ vs :
-    log !! l = None →
-      log_tokens log -∗
-        token γ -∗
-          l ↦∗□ vs -∗
-            log_tokens (<[l := (γ, vs)]> log).
+  Lemma log_tokens_insert γ log :
+    log_tokens log -∗ token γ -∗ log_tokens ({[ γ ]} ∪ log).
   Proof.
-    iIntros (Hlog) "Hlogtokens Htok #Hl".
+    iIntros "Hlogtokens Htok".
     rewrite /log_tokens.
-    rewrite big_sepM_insert; last done.
-    iFrame "∗ #".
+    destruct (decide (γ ∈ log)) as [Hmem | Hnmem].
+    { iPoseProof (big_sepS_elem_of with "Hlogtokens") as "Htok'".
+      { done. }
+      iCombine "Htok Htok'" gives %[]. }
+    rewrite big_sepS_insert //.
+    iFrame.
   Qed.
 
   (* Lemma foo (x : nat) (X Y : gset nat) : x ∉ Y → X ⊂ Y → {[ x ]} ∪ X ⊂ {[ x ]} ∪ Y.
