@@ -95,7 +95,7 @@ Section code.
         array_copy_to ("l" +ₗ #cache_off) "desired" #n;;
         (* Unlock *)
         "l" <- #2 + "ver";;
-        CmpXchg ("l" +ₗ #1) (tag "backup'") "backup'";;
+        CmpXchg ("l" +ₗ #1) ("backup'" `tag` #1) "backup'";;
         #()
       else #().
 
@@ -2289,7 +2289,6 @@ Qed.
     ver ≤ ver₂ → length index₂ = S (Nat.div2 (S ver₂)) →
       StronglySorted (gmap_mono order₂) index₂ → Forall (.∈ dom order₂) index₂ → map_Forall (λ _ idx, idx ≤ idx₂) order₂ →
         order₂ !! γ_backup = None →
-        Shield hazptr γd s (Validated backup γ_backup (node desired) n) -∗
           inv readN (read_inv γ γᵥ γₕ γᵢ γ_val γd γ_abs l n) -∗
             inv cached_wfN (cached_wf_inv γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ γ_abs γd l n) -∗
               mono_nat_lb_own γᵥ ver₂ -∗
@@ -2299,11 +2298,11 @@ Qed.
                       vers_frag_own γₒ γ_backup (S idx₂) -∗
                         own γₒ (◯ (fmap (M := gmap gname) to_agree order₂)) -∗
                           vers_frag_own γ_vers γ_backup ver₂ -∗
-                            {{{ l_desired ↦∗{dq} desired }}}
+                            {{{ l_desired ↦∗{dq} desired ∗ Shield hazptr γd s (Validated backup γ_backup (node desired) n) }}}
                               try_validate n #l #ver #l_desired #backup
-                            {{{ RET #(); l_desired ↦∗{dq} desired }}}.
+                            {{{ RET #(); l_desired ↦∗{dq} desired ∗ Shield hazptr γd s (Validated backup γ_backup (node desired) n) }}}.
   Proof.
-    iIntros (Hpos Hlen_desired Hle Hlenᵢ₂ Hmono Hindexordered Hubord₂ Hbackup_fresh) "Hprotected #Hreadinv #Hinv #◯Hγᵥ #◯Hγᵢ #◯Hγ_abs #◯Hγₕ #◯Hγₒ #◯Hγₒcopy #◯Hγ_vers %Φ !# Hldes HΦ".
+    iIntros (Hpos Hlen_desired Hle Hlenᵢ₂ Hmono Hindexordered Hubord₂ Hbackup_fresh) "#Hreadinv #Hinv #◯Hγᵥ #◯Hγᵢ #◯Hγ_abs #◯Hγₕ #◯Hγₒ #◯Hγₒcopy #◯Hγ_vers %Φ !# [Hldes Hprotected] HΦ".
     rewrite /try_validate. wp_pures.
     destruct (Nat.even ver) eqn:Heven.
     - rewrite Zrem_even even_inj Heven /=.
@@ -2400,7 +2399,7 @@ Qed.
       { rewrite even_succ_negb Heven /= last_snoc.
         iExists γ_backup, backup. iFrame "%". iPureIntro.
         repeat split; auto.
-        - rewrite bool_decide_eq_false_2 //.
+        - rewrite bool_decide_eq_false_2 //. rewrite bool_decide_eq_false_2 // in Htag₃.
         - rewrite length_app /= Nat.add_1_r Hlenᵢ₃. do 2 f_equal. rewrite -Nat.Even_div2 // -Nat.even_spec //.
         - apply NoDup_app. repeat split; first done.
           + rewrite Forall_forall in Hindexordered.
@@ -2482,33 +2481,33 @@ Qed.
       iClear "Hlock".
       iInv readN as "(%ver₅ & %log₅ & %abstraction₅ & %actual₅ & %cache₅ & %γ_backup₅ & %γ_backup₅' & %backup₅ & %backup₅' & %index₅ & %validated₅ & %t₅ & >Hver & >Hbackup & >Hγ & >%Hunboxed₅ & Hbackup_managed & >%Hindex₅ & >%Htag₅ & >%Hlenactual₅ & >%Hlencache₅ & >%Hloglen₅ & Hlogtokens & >%Hlogged₅ & >●Hγₕ & >●Hγ_abs & >%Habs_backup₅ & >%Habs_backup'₅ & >%Hlenᵢ₅ & >%Hnodup₅ & >%Hrange₅ & >●Hγᵢ & >●Hγᵥ & >Hcache & >%Hcons₅ & Hlock & >●Hγ_val & >%Hvalidated_iff₅ & >%Hvalidated_sub₅ & >%Hdom_eq₅)" "Hcl".
       iInv cached_wfN as "(%ver₅' & %log₅' & %abstraction₅' & %actual₅' & %γ_backup₅'' & %backup₅'' & %requests₅ & %vers₅ & %index₅' & %order₅ & %idx₅ & %t₅' & >●Hγᵥ' & >Hbackup₅' & >Hγ' & >%Hlog₅' & >%Habs₅' & >●Hγₕ' & >●Hγ_abs' & >●Hγᵣ & Hreginv & >●Hγ_vers & >%Hdomvers₅ & >%Hvers₅ & >●Hγᵢ' & >●Hγₒ & >%Hdomord₅ & >%Hinj₅ & >%Hidx₅ & >%Hmono₅ & >%Hubord₅)" "Hcl'".
-      iDestruct (pointsto_agree with "Hbackup Hbackup₅'") as %<-.
+      iDestruct (pointsto_agree with "Hbackup Hbackup₅'") as %[=<-<-%(inj Z.of_nat)].
       (* change 2%Z with (Z.of_nat 2). simplify_eq. *)
-      iDestruct (mono_nat_auth_own_agree with "●Hγᵥ ●Hγᵥ'") as %[_ ->].
+      iDestruct (mono_nat_auth_own_agree with "●Hγᵥ ●Hγᵥ'") as %[_ <-].
+      iDestruct (log_auth_auth_agree with "●Hγₕ ●Hγₕ'") as %<-.
       iDestruct (index_auth_auth_agree with "●Hγᵢ ●Hγᵢ'") as %<-.
       iDestruct (abstraction_auth_auth_agree with "●Hγ_abs ●Hγ_abs'") as %<-.
-      destruct (decide (Some (Loc.blk_to_loc backup₅) &ₜ t₅ = Some (Loc.blk_to_loc backup₄') &ₜ t₄)) as [[=-> ->%(inj Z.of_nat)] | Hneq]; first last.
+      iCombine "Hγ Hγ'" gives %[_ [=<-<-]].
+      simplify_eq.
+      iPoseProof (abstraction_auth_frag_agree with "●Hγ_abs ◯Hγ_abs") as "%Hagree_abs₅".
+      simplify_eq.
+      destruct (decide (Some (Loc.blk_to_loc backup₅) &ₜ t₅ = Some (Loc.blk_to_loc backup₄') &ₜ 1)) as [[=->->] | Hneq]; first last.
       { wp_cmpxchg_fail.
-        { change #backup₄' with #(Some (Loc.blk_to_loc backup₄') &ₜ 0). naive_solver.
-          intros [=Heq]. lia. }
-        iMod ("Hcl'" with "[$Hbackup₅' $Hγ' $●Hγₕ' $●Hγᵣ $●Hγᵥ'' $Hreginv $●Hγ_vers $●Hγᵢ' $●Hγₒ]") as "_".
+        iMod ("Hcl'" with "[$Hbackup₅' $Hγ' $●Hγₕ' $●Hγᵣ $●Hγᵥ' $Hreginv $●Hγ_vers $●Hγᵢ' $●Hγₒ $●Hγ_abs']") as "_".
         { iFrame "%". }
-        iMod ("Hcl" with "[$Hγ $□Hbackup₅ $●Hγₕ $●Hγᵢ $●Hγᵥ $Hcache $Hlock $Hlogtokens $Hver $Hbackup $●Hγ_val]") as "_".
+        iMod ("Hcl" with "[$Hγ $Hbackup_managed $●Hγₕ $●Hγᵢ $●Hγᵥ $Hcache $Hlock $Hlogtokens $Hver $Hbackup $●Hγ_val $●Hγ_abs]") as "_".
         { iFrame "%". }
         iApply fupd_mask_intro.
         { set_solver. }
         iIntros ">_ !>".
-        rewrite /strip.
         wp_pures.
         iModIntro.
         iApply ("HΦ" with "[$]"). }
-      iCombine "Hbackup Hbackup₅'" as "Hbackup".
+      iPoseProof (pointsto_combine with "Hbackup Hbackup₅'") as "[Hbackup _]".
+      rewrite dfrac_op_own Qp.half_half.
       wp_cmpxchg_suc.
-      iDestruct (mono_nat_auth_own_agree with "●Hγᵥ ●Hγᵥ''") as %[_ <-].
-      iDestruct (index_auth_auth_agree with "●Hγᵢ ●Hγᵢ'") as %<-.
-      iDestruct (log_auth_auth_agree with "●Hγₕ ●Hγₕ'") as %<-.
-      iCombine "Hγ Hγ'" gives %[_ [=->->]].
-      destruct Hvalidated₅ as [[=<-] | ([=] & _ & _)].
+      { done. }
+      iDestruct (shield_managed_agree with "Hprotected Hbackup_managed") as %<-.
       iPoseProof (vers_auth_frag_agree with "●Hγₒ ◯Hγₒ") as "%Hagreeₒ₄". simplify_eq.
       iDestruct (mono_nat_lb_own_valid with "●Hγᵥ Hlb₃") as %[_ Hless₃].
       iPoseProof (index_auth_frag_agree with "●Hγᵢ ◯Hγᵢ₃") as "%Hagreeᵢ₂₄".
@@ -2525,11 +2524,12 @@ Qed.
         { intros [=Heq]. assert (ver ≤ ver₄) as Hmono%div2_mono by lia. lia. } *)
         eapply StronglySorted_lookup_lt with (i := S (Nat.div2 ver)) (j := S (S (Nat.div2 ver₄))) in Hmono₅; eauto; last lia.
         rewrite /gmap_mono in Hmono₄.
-        assert (is_Some (order₅ !! backup₅')) as [ts₅ Hts₅].
+        assert (is_Some (order₅ !! γ_backup₅')) as [ts₅ Hts₅].
         { rewrite -elem_of_dom Hdomord₅.
           rewrite Forall_forall in Hrange₅.
-          apply Hrange₅. rewrite list_elem_of_lookup.
+          apply Hrange₅. rewrite elem_of_list_lookup.
           eauto. }
+          rewrite /gmap_mono in Hmono₅.
         pose proof (Hmono₅ _ _ Hidx₅ Hts₅) as Hle'.
         rewrite map_Forall_lookup in Hubord₄. 
         apply Hubord₅ in Hts₅. lia. }
