@@ -1323,11 +1323,10 @@ From smr Require Import helpers.
       (* $Hregistry $Hreginv $Hver Hγᵢ Hγᵥ Hcache *)
       simplify_eq.
       iMod ("Hcl" with "[-Hcache' Hdst' Hsrc Hsrc' HΦ]") as "_".
-      { iExists ver, log, abstraction, actual, (<[i:=v']>cache), γ_backup, γ_backup', backup, backup', index, validated, t.
+      { iExists ver, log, abstraction, actual, (<[i:=v']>cache), γ_backup, γ_backup', backup, backup', index, validated, 1.
         iFrame "∗ # %".
         rewrite Heven. iFrame.
         iNext. repeat iSplit; try done.
-        { rewrite bool_decide_eq_false_2 //. }
         rewrite length_insert //. }
       iModIntro.
       wp_pures.
