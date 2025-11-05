@@ -113,9 +113,11 @@ Section code.
           let: "backup" := (Snd "old") in
           let: "shield'" := hazptr.(shield_new) "domain" in
           hazptr.(shield_set) "shield'" "backup'";;
-          if: (CAS ("l" +ₗ #backup_off) "backup" (tag "backup'")) || (CAS ("l" +ₗ #backup_off) (untag "backup") (tag "backup'")) then
+          if: (CAS ("l" +ₗ #backup_off) "backup" (tag "backup'")) 
+            || (CAS ("l" +ₗ #backup_off) (untag "backup") (tag "backup'")) then
             hazptr.(hazard_domain_retire) "domain" (untag "backup") #n;;
             try_validate n "l" "ver" "desired" "backup'";;
+            hazptr.(shield_unset) "shield'";;
             hazptr.(shield_drop) "shield";;
             hazptr.(shield_drop) "shield'";;
             #true
