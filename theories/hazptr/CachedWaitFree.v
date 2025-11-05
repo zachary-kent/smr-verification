@@ -2319,7 +2319,7 @@ Qed.
       { wp_cmpxchg_fail.
         iMod ("Hcl'" with "[$Hγ' $●Hγₕ' $Hreginv $●Hγᵣ $●Hγᵥ' $●Hγ_vers $Hbackup₃' $●Hγᵢ' $●Hγₒ $●Hγ_abs']") as "_".
         { iFrame "%". }
-        iMod ("Hcl" with "[$Hbackup $Hγ $Hlogtokens $●Hγᵢ $●Hγᵥ $Hcache $Hlock $Hver $●Hγₕ $●Hγ_val $Hbackup_managed₃]") as "_".
+        iMod ("Hcl" with "[$Hbackup $Hγ $Hlogtokens $●Hγᵢ $●Hγᵥ $Hcache $Hlock $Hver $●Hγₕ $●Hγ_val $Hbackup_managed₃ $●Hγ_abs]") as "_".
         { iFrame "%". }
         iApply fupd_mask_intro.
         { set_solver. }
@@ -2534,13 +2534,14 @@ Qed.
         rewrite map_Forall_lookup in Hubord₄. 
         apply Hubord₅ in Hts₅. lia. }
       iDestruct "Hbackup" as "[Hbackup Hbackup']".
+      change #backup₄' with #(Some (Loc.blk_to_loc backup₄') &ₜ O).
       iPoseProof (vers_auth_frag_agree with "●Hγ_vers ◯Hγ_vers") as "%Hagreever".
-      iMod ("Hcl'" with "[$Hbackup $Hγ' $●Hγₕ' $Hreginv $●Hγᵣ $●Hγ_vers $●Hγᵥ'' $●Hγᵢ' $●Hγₒ]") as "_".
+      iMod ("Hcl'" with "[$Hbackup $Hγ' $●Hγₕ' $Hreginv $●Hγᵣ $●Hγ_vers $●Hγᵥ' $●Hγᵢ' $●Hγₒ $●Hγ_abs']") as "_".
       { iFrame "%". iPureIntro.
         destruct (decide (1 < size log₅)).
         { rewrite bool_decide_eq_true_2 //.
           rewrite bool_decide_eq_true_2 // in Hvers₅.
-          destruct Hvers₅ as (ver'' & Hvers₅ & Hlever' & Hubvers₅ & Hinvalid).
+          destruct Hvers₅ as (ver'' & Hvers₅ & Hlever' & Hubvers₅ & Hinvalid₅).
           simplify_eq.
           exists ver. repeat split; auto.
           rewrite bool_decide_eq_false_2 //. lia. }
@@ -2555,23 +2556,20 @@ Qed.
       rewrite last_lookup Hlenᵢ₅ Nat.Odd_div2 /= in Hindex₅; first last.
       { rewrite Nat.Odd_succ Nat.Even_succ Nat.Odd_succ -Nat.even_spec //. }
       simplify_eq.
-      rewrite Hldes₅ /= in Hcons₅.
-      simplify_eq.
-      iMod (validated_auth_update ldes' with "●Hγ_val") as "[●Hγ_val _]".
-      iMod ("Hcl" with "[$Hγ $Hlogtokens $●Hγᵢ $●Hγᵥ $Hcache $Hbackup' $Hver $●Hγₕ $□Hbackup₅ $Hlock $●Hγ_val]") as "_".
+      iMod (validated_auth_update γ_backup with "●Hγ_val") as "[●Hγ_val _]".
+      iMod ("Hcl" with "[$Hγ $Hlogtokens $●Hγᵢ $●Hγᵥ $Hcache $Hbackup' $Hver $●Hγₕ $Hlock $●Hγ_val $Hbackup_managed $●Hγ_abs]") as "_".
       { iFrame "%". iPureIntro.
         - repeat split; auto.
-          + right. rewrite Nat.Even_succ Nat.Odd_succ -Nat.even_spec //.
-          + rewrite Hldes₅ //=.
-          + simpl. rewrite Heven Hldes₅ //=.
-          + rewrite bool_decide_eq_true_2 //. set_solver.
-          + assert (ldes' ∈ dom log₅).
+          + rewrite Nat.Even_succ Nat.Odd_succ -Nat.even_spec //.
+          + rewrite Hldes₅ /= Heven //.
+          + intros _. set_solver.
+            (* simpl. rewrite Heven Hldes₅ //=. *)
+          + assert (γ_backup ∈ dom log₅).
             { rewrite elem_of_dom //. }
             set_solver. }
       iApply fupd_mask_intro.
       { set_solver. }
       iIntros ">_ !>".
-      rewrite /strip.
       wp_pures.
       iModIntro.
       iApply ("HΦ" with "[$]").
