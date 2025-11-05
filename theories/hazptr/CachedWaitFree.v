@@ -2594,26 +2594,25 @@ Qed.
   Qed.
 
   Lemma execute_lp 
-    (γ γᵥ γₕ γᵣ γᵢ γ_val γ_vers γₒ : gname)
-    (l lexp ldes ldes' : loc)
+    (γ γᵥ γₕ γᵣ γᵢ γ_val γ_vers γₒ γd γ_abs γ_backup γ_backup' γ_new_backup γₚ γₑ γₗ γₜ : gname)
+    (l lexp ldes backup backup' new_backup : blk)
     (dq dq' : dfrac)
     (expected desired cache : list val)
     (Φ : val → iProp Σ)
-    (log₁ : gmap loc (gname * list val))
-    (backup backup' copy : loc)
-    (requests₁ : list (gname * gname * loc))
+    (abstraction : gmap gname blk)
+    (log₁ : gmap gname (list val))
+    (requests₁ : list (gname * gname * gname))
     (vers₁ order₁ : gmap gname nat)
     (index₁ : list gname)
-    (validated : gset loc)
-    (idx₁ ver ver₁ ver' i : nat)
-    (γₚ γₑ γₗ γₜ : gname) :
-    length expected > 0 →
-    length expected = length desired →
-    length cache = length expected →
+    (validated : gset gname)
+    (idx₁ ver ver₁ ver' i n : nat) s :
+    n > 0 →
+    length expected = n →
+    length desired = n →
     expected ≠ desired →
-    last index₁ = Some backup' →
-    (if Nat.even ver₁ then snd <$> log₁ !! backup' = Some cache else True) →
-    map_Forall (λ _ '(_, value), length value = length expected) log₁ →
+    last index₁ = Some γ_backup' →
+    (if Nat.even ver₁ then log₁ !! γ_backup' = Some cache else True) →
+    map_Forall (λ _ value, length value = length expected) log₁ →
     length index₁ = S (Nat.div2 (S ver₁)) →
     NoDup index₁ →
     Forall (.∈ dom log₁) index₁ →
@@ -2624,49 +2623,51 @@ Qed.
     else vers₁ = ∅) →
     dom vers₁ ⊂ dom log₁ →
     gmap_injective order₁ →
-    order₁ !! backup = Some idx₁ →
+    order₁ !! γ_backup = Some idx₁ →
     StronglySorted (gmap_mono order₁) index₁ →
     map_Forall (λ _ idx', idx' ≤ idx₁) order₁ →
     Forall val_is_unboxed desired →
     (* Persistent hypotheses *)
-    inv readN (read_inv γ γᵥ γₕ γᵢ γ_val l (length expected)) -∗
-    inv cached_wfN (cached_wf_inv γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ l) -∗
-    inv casN (cas_inv Φ γ γₑ γₗ γₜ lexp ldes dq dq' expected desired) -∗
-    registered γᵣ i γₗ γₑ backup -∗
-    log_frag_own γₕ backup γₚ expected -∗
-    backup ↦∗□ expected -∗
-    (* Spatial hypotheses *)
+    inv readN (read_inv γ γᵥ γₕ γᵢ γ_val γd γ_abs l n) -∗
+    inv cached_wfN (cached_wf_inv γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ γ_abs γd l n) -∗
+    inv casN (cas_inv Φ γ γₑ γₗ γₜ γ_backup γd backup lexp ldes dq dq' expected desired s) -∗
+    registered γᵣ i γₗ γₑ γ_backup -∗
+    abstraction_frag_own γ_abs γ_backup backup -∗
+    log_frag_own γₕ γ_backup expected -∗
+    hazptr.(Managed) γd backup γ_backup n (node expected) -∗
+    (* Token for linearization *)
     token γₜ -∗
-    ldes' ↦∗ desired -∗
-    l ↦ #ver₁ -∗
-    log_tokens log₁ -∗
+    (* Token for backup *)
+    token γ_new_backup -∗
+    new_backup ↦∗ desired -∗
+    (l +ₗ version_off) ↦ #ver₁ -∗
+    log_tokens (dom log₁) -∗
     mono_nat_auth_own γᵥ (1/4) ver₁ -∗
-    (l +ₗ 2) ↦∗{#1/2} cache -∗
+    (l +ₗ cache_off) ↦∗{#1/2} cache -∗
     (if Nat.even ver₁ then
       index_auth_own γᵢ (1/4) index₁ ∗
       mono_nat_auth_own γᵥ (1/4) ver₁ ∗
-      (l +ₗ 2) ↦∗{#1/2} cache
+      (l +ₗ cache_off) ↦∗{#1/2} cache
     else True) -∗
-    (▷ read_inv γ γᵥ γₕ γᵢ γ_val l (length expected) ={⊤ ∖ ↑readN, ⊤}=∗ emp) -∗
+    (▷ read_inv γ γᵥ γₕ γᵢ γ_val γd γ_abs l n ={⊤ ∖ ↑readN, ⊤}=∗ emp) -∗
     mono_nat_auth_own γᵥ (1/2) ver₁ -∗
     registry γᵣ requests₁ -∗
-    registry_inv γ backup expected requests₁ (dom log₁) -∗
+    registry_inv γ γd backup expected requests₁ abstraction -∗
     vers_auth_own γ_vers 1 vers₁ -∗
     index_auth_own γᵢ (1/2) index₁ -∗
     vers_auth_own γₒ 1 order₁ -∗
-    (▷ cached_wf_inv γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ l ={⊤ ∖ ↑readN ∖ ↑cached_wfN, ⊤ ∖ ↑readN}=∗ emp) -∗
+    (▷ cached_wf_inv γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ γ_abs γd l n ={⊤ ∖ ↑readN ∖ ↑cached_wfN, ⊤ ∖ ↑readN}=∗ emp) -∗
     own γᵢ (●{#1/4} map_seq 0 (to_agree <$> index₁)) -∗
     validated_auth_own γ_val 1 validated -∗
-    ghost_var γ (1/2) (backup, expected) -∗
-    (l +ₗ 1) ↦ InjLV #ldes' -∗
-    own γₕ (● (fmap (M:=gmap loc) to_agree log₁))
+    ghost_var γ (1/2) (γ_backup, expected) -∗
+    (l +ₗ backup_off) ↦ #(Some (Loc.blk_to_loc backup) &ₜ 1) -∗
+    own γₕ (● (fmap (M:=gmap gname) to_agree log₁))
     ={⊤ ∖ ↑readN ∖ ↑cached_wfN, ⊤}=∗
-      ⌜log₁ !! ldes' = None⌝ ∗
+      ⌜log₁ !! γ_new_backup = None⌝ ∗
       (lexp ↦∗{dq} expected ∗ ldes ↦∗{dq'} desired -∗ Φ #true) ∗
-      vers_frag_own γ_vers ldes' ver₁ ∗
-      (∃ γₚ', log_frag_own γₕ ldes' γₚ' desired) ∗
-      ldes' ↦∗□ desired ∗
-      vers_frag_own γₒ ldes' (S idx₁).
+      vers_frag_own γ_vers γ_new_backup ver₁ ∗
+      log_frag_own γₕ γ_new_backup desired ∗
+      vers_frag_own γₒ γ_new_backup (S idx₁).
   Proof.
     iIntros (Hpos Hleneq Hlencache Hne Hindex₁ Hcache₁ Hloglen₁ Hlenᵢ₁ Hnodup₁ Hrange₁ 
             Hvallogged Hdomord Hvers₁ Hdomvers₁ Hinj₁ Hidx₁ Hmono₁ Hubord₁ Hunboxed).
