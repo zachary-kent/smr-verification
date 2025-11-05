@@ -117,7 +117,6 @@ Section code.
             || (CAS ("l" +ₗ #backup_off) (untag "backup") (tag "backup'")) then
             hazptr.(hazard_domain_retire) "domain" (untag "backup") #n;;
             try_validate n "l" "ver" "desired" "backup'";;
-            hazptr.(shield_unset) "shield'";;
             hazptr.(shield_drop) "shield";;
             hazptr.(shield_drop) "shield'";;
             #true
@@ -2858,14 +2857,18 @@ Qed.
       + auto.
   Qed.
 
-  Lemma cas_spec (γ γᵥ γₕ γᵣ γᵢ γ_val γ_vers γₒ : gname) (l lexp ldes : loc) (dq dq' : dfrac) (expected desired : list val) :
-    length expected > 0 → length expected = length desired → Forall val_is_unboxed expected → Forall val_is_unboxed desired → 
-      inv readN (read_inv γ γᵥ γₕ γᵢ γ_val l (length expected)) -∗
-        inv cached_wfN (cached_wf_inv γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ l) -∗
+  Lemma cas_spec (γ γᵥ γₕ γᵣ γᵢ γ_val γ_vers γₒ γd γ_abs : gname) (l lexp ldes : loc) (dq dq' : dfrac) (expected desired : list val) (n : nat) :
+    n > 0 →
+    length expected = n →
+    length desired = n →
+    Forall val_is_unboxed expected →
+    Forall val_is_unboxed desired → 
+      inv readN (read_inv γ γᵥ γₕ γᵢ γ_val γd γ_abs l n) -∗
+        inv cached_wfN (cached_wf_inv γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ γ_abs γd l n) -∗
           lexp ↦∗{dq} expected -∗
             ldes ↦∗{dq'} desired -∗
               <<{ ∀∀ backup actual, value γ backup actual  }>> 
-                cas (length expected) #l #lexp #ldes @ ↑N
+                cas hazptr n #l #lexp #ldes @ ↑N
               <<{ if bool_decide (actual = expected) then ∃ backup', value γ backup' desired else value γ backup actual |
                   RET #(bool_decide (actual = expected)); lexp ↦∗{dq} expected ∗ ldes ↦∗{dq'} desired }>>.
     Proof.
