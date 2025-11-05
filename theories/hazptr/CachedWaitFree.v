@@ -2408,7 +2408,8 @@ Qed.
             destruct Hγ_l as [ts Hts]. simplify_eq.
           + apply NoDup_singleton.
         - rewrite Forall_app. split; first done. rewrite Forall_singleton.
-          rewrite -Hdomord₃ elem_of_dom. eauto. }
+          rewrite -Hdomord₃ elem_of_dom. eauto.
+        - rewrite bool_decide_eq_false_2 // in Htag₃. }
       iModIntro.
       wp_pures.
       wp_bind (array_copy_to _ _ _).
@@ -2496,7 +2497,7 @@ Qed.
         iMod ("Hcl'" with "[$Hbackup₅' $Hγ' $●Hγₕ' $●Hγᵣ $●Hγᵥ' $Hreginv $●Hγ_vers $●Hγᵢ' $●Hγₒ $●Hγ_abs']") as "_".
         { iFrame "%". }
         iMod ("Hcl" with "[$Hγ $Hbackup_managed $●Hγₕ $●Hγᵢ $●Hγᵥ $Hcache $Hlock $Hlogtokens $Hver $Hbackup $●Hγ_val $●Hγ_abs]") as "_".
-        { iFrame "%". }
+        { iExists γ_backup₅'. iFrame "%". }
         iApply fupd_mask_intro.
         { set_solver. }
         iIntros ">_ !>".
