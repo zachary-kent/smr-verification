@@ -1495,18 +1495,14 @@ Lemma gmap_injective_insert `{Countable K, Countable V} (k : K) (v : V) (m : gma
     iMod (own_alloc (● (fmap (M := gmap gname) to_agree {[ γ_backup := O ]}))) as "[%γₒ Hγₒ]".
     { rewrite map_fmap_singleton. by apply auth_auth_valid, singleton_valid. }
     iMod (inv_alloc cached_wfN _ (cached_wf_inv γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ γ_abs γz l (length vs)) with "[$Hγ'' $Hγₕ' $Hγᵣ $Hvalidated' $Hγᵥ Hγ_vers Hγₒ $Hγᵢ $Hγ_abs']") as "#Hinv".
-    { iExists vs, γ_backup, backup, ∅, {[ γ_backup := O ]}, O. 
+    { iExists ∅, {[ γ_backup := O ]}, O. 
       rewrite /registry_inv /vers_auth_own map_fmap_singleton lookup_singleton /=. iFrame.
       rewrite bool_decide_eq_false_2; first last.
       { rewrite map_size_singleton. lia. }
       iPureIntro. repeat split; auto with set_solver.
-      - rewrite map_Forall_singleton //.
-      - rewrite lookup_singleton //.
       - rewrite lookup_singleton //.
       - rewrite lookup_singleton //.
       - set_solver.
-      - set_solver.
-      - rewrite lookup_singleton //.
       - set_solver.
       - apply gmap_injective_singleton.
       - repeat constructor.
@@ -2258,47 +2254,6 @@ Qed.
     + iCombine "Hγₜ Hlintok" gives %[].
   Qed.
 
-(* Definition cached_wf_inv (γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ γ_abs γd : gname) (l : loc) (len : nat) : iProp Σ :=
-  ∃ (ver : nat) (log : gmap gname (list val)) (abstraction : gmap gname blk)
-    (actual : list val) (γ_backup : gname)
-    (backup : blk) (requests : list (gname * gname * gname))
-    (vers : gmap gname nat) (index : list gname) (order : gmap gname nat) (idx : nat) (t : nat),
-    (* Ownership of remaining quarter of logical counter *)
-    mono_nat_auth_own γᵥ (1/2) ver ∗
-    (* Ownership of the backup location (stored with a tag bit) *)
-    (l +ₗ backup_off) ↦{# 1/2} #(Some (Loc.blk_to_loc backup) &ₜ t) ∗
-    (* Ownership of the logical state (remaining quarter) *)
-    ghost_var γ (1/4) (γ_backup, actual) ∗
-    ⌜log !! γ_backup = Some actual⌝ ∗
-    ⌜abstraction !! γ_backup = Some backup⌝ ∗
-    (* Own other half of log in top-level invariant *)
-    log_auth_own γₕ (1/2) log ∗
-    (* Own half of the abstraction map to share with the read invariant *)
-    abstraction_auth_own γ_abs (1/2) abstraction ∗
-    (* Ownership of request registry *)
-    registry γᵣ requests ∗
-    (* State of request registry against the current abstraction *)
-    registry_inv γ γd backup actual requests abstraction ∗
-    (* Authoritative ownership of version mapping *)
-    vers_auth_own γ_vers 1 vers ∗
-    (* Authoritative ownership of the logical ordering *)
-    (* The history map tracks which versions have been published. *)
-    ⌜dom vers ⊂ dom log⌝ ∗
-    ⌜if bool_decide (1 < size log) then
-        (∃ ver',
-          vers !! γ_backup = Some ver' ∧
-          ver' ≤ ver ∧
-          map_Forall (λ _ ver'', ver'' ≤ ver') vers ∧
-          if bool_decide (ver = ver') then t ≠ 0 else True)
-      else vers = ∅⌝ ∗
-    (* Own other half of index *)
-    index_auth_own γᵢ (1/2) index ∗
-    vers_auth_own γₒ 1 order ∗
-    ⌜dom order = dom log⌝ ∗
-    ⌜gmap_injective order⌝ ∗
-    ⌜order !! γ_backup = Some idx⌝ *)
-
-
   Lemma wp_try_validate (γ γᵥ γₕ γᵣ γᵢ γ_val γ_vers γₒ γd γ_abs γ_backup : gname) (l l_desired backup : blk) (dq : dfrac)
                         (desired : list val) (ver ver₂ idx₂ : nat) (index₂ : list gname)
                         (abstraction : gmap gname blk) (order₂ : gmap gname nat) (n : nat) s :
@@ -2720,22 +2675,6 @@ Qed.
     iAssert (⌜backup ≠ new_backup⌝)%I as %Hnoaba.
     { iIntros (<-). simplify_eq.
       iDestruct (hazptr.(managed_exclusive) with "Hmanaged Hmanaged'") as %[]. }
-    (* The new backup pointer cannot be logged, as we have persistent pointsto for all of the previous backup pointers, and full pointsto for the new backup *)
-    (* iAssert (⌜log₁ !! γ_new_backup = None⌝)%I as "%Hγnew_backup_fresh".
-    { destruct (log₁ !! γ_new_backup) eqn:Hbound; last done.
-      iExFalso.
-      iPoseProof (big_sepM_lookup with "Hlogtokens") as "Hlogged".
-      { done. }
-      destruct p.
-      iDestruct "Hlogged" as "[_ Hldes'₁]".
-      iApply (array_pointsto_pointsto_persist with "Hldes' Hldes'₁").
-      { rewrite map_Forall_lookup in Hloglen₁.
-        apply Hloglen₁ in Hbound. lia. }
-      lia. } *)
-    (* Split the registry invariant into three parts
-        1) That corresponds to requests before this CAS
-        2) That corresponding to this CAS
-        3) Any following this CAS *)
     rewrite -(take_drop_middle _ _ _ Hagree).
     rewrite /registry_inv big_sepL_app big_sepL_cons /request_inv.
     iDestruct "Hreginv" as "(Hlft & (%lexp' & %Hlexp_abs & Hlin & %Φ' & %γₜ' & %lexp_src' & %ldes' & %dq₁ & %dq₁' & %expected' & %desired' & %s'' & Hγₑ & _) & Hrht)".
