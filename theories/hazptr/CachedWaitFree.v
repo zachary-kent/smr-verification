@@ -2658,10 +2658,12 @@ Qed.
     index_auth_own γᵢ (1/2) index₁ -∗
     vers_auth_own γₒ 1 order₁ -∗
     (▷ cached_wf_inv γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ γ_abs γd l n ={⊤ ∖ ↑readN ∖ ↑cached_wfN, ⊤ ∖ ↑readN}=∗ emp) -∗
-    own γᵢ (●{#1/4} map_seq 0 (to_agree <$> index₁)) -∗
+    index_auth_own γᵢ (1/4) index₁ -∗
     validated_auth_own γ_val 1 validated -∗
     ghost_var γ (1/2) (γ_backup, expected) -∗
     (l +ₗ backup_off) ↦ #(Some (Loc.blk_to_loc backup) &ₜ 1) -∗
+    abstraction_auth_own γ_abs 1 abstraction -∗
+    log_auth_own γₕ 1 log₁ -∗
     own γₕ (● (fmap (M:=gmap gname) to_agree log₁))
     ={⊤ ∖ ↑readN ∖ ↑cached_wfN, ⊤}=∗
       ⌜log₁ !! γ_new_backup = None⌝ ∗
@@ -2670,11 +2672,11 @@ Qed.
       log_frag_own γₕ γ_new_backup desired ∗
       vers_frag_own γₒ γ_new_backup (S idx₁).
   Proof.
-    iIntros (Hpos Hleneq Hlencache Hne Hindex₁ Hcache₁ Hloglen₁ Hlenᵢ₁ Hnodup₁ Hrange₁ 
+    iIntros (Hpos Hlen_exp Hlen_des Hne Hindex₁ Hcache₁ Hloglen₁ Hlenᵢ₁ Hnodup₁ Hrange₁ 
             Hvallogged Hdomord Hvers₁ Hdomvers₁ Hinj₁ Hidx₁ Hmono₁ Hubord₁ Hunboxed).
-    iIntros "#Hreadinv #Hinv #Hcasinv #◯Hγᵣ #◯Hγₕ #□Hbackup".
-    iIntros "Hγₜ Hldes' Hver Hlogtokens ●Hγᵥ Hcache".
-    iIntros "Hlock Hcl ●Hγᵥ' ●Hγᵣ Hreginv ●Hγ_vers ●Hγᵢ' ●Hγₒ Hcl' ●Hγᵢ ●Hγ_val Hγ Hbackup₁ ●Hγₕ".
+    iIntros "#Hreadinv #Hinv #Hcasinv #◯Hγᵣ #◯Hγ_abs #◯Hγₕ".
+    iIntros "Hmanaged Hγₜ Htok Hnew_backup Hver Hlogtokens ●Hγᵥ Hcache".
+    iIntros "Hlock Hcl ●Hγᵥ' ●Hγᵣ Hreginv ●Hγ_vers ●Hγᵢ' ●Hγₒ Hcl' ●Hγᵢ ●Hγ_val Hγ Hbackup₁ ●Hγ_abs ●Hγₕ".
     simplify_eq.
     (* Derive agreement facts from auth-frag combinations *)
     iPoseProof (registry_agree with "●Hγᵣ ◯Hγᵣ") as "%Hagree".
