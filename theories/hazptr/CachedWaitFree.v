@@ -1571,7 +1571,7 @@ Lemma gmap_injective_insert `{Countable K, Countable V} (k : K) (v : V) (m : gma
       by rewrite -not_true_iff_false Z.odd_spec -Odd_inj in H.
   Qed.
 
-  Lemma wp_array_copy_to_protected_off (dst : loc) (src : blk) (vdst expected desired : list val) (i : nat) ψ γ γₑ γₗ γₜ γ_src γz lexp_src ldes dq dq' s :
+  Lemma wp_array_copy_to_protected_off_inv (dst : loc) (src : blk) (vdst expected desired : list val) (i : nat) ψ γ γₑ γₗ γₜ γ_src γz lexp_src ldes dq dq' s :
     i + length vdst = length expected →
     inv casN (cas_inv ψ γ γₑ γₗ γₜ γ_src γz src lexp_src ldes dq dq' expected desired s) -∗
       {{{ token γₜ ∗ dst ↦∗ vdst }}}
@@ -1637,7 +1637,7 @@ Lemma gmap_injective_insert `{Countable K, Countable V} (k : K) (v : V) (m : gma
     { iCombine "Hγₜ Hlintok" gives %[]. }
   Qed.
 
-  Lemma wp_array_copy_to_protected (dst : loc) (src : blk) (vdst expected desired : list val) (n : nat) ψ γ γₑ γₗ γₜ γ_src γz lexp_src ldes dq dq' s :
+  Lemma wp_array_copy_to_protected_inv (dst : loc) (src : blk) (vdst expected desired : list val) (n : nat) ψ γ γₑ γₗ γₜ γ_src γz lexp_src ldes dq dq' s :
     length vdst = n → length expected = n →
     inv casN (cas_inv ψ γ γₑ γₗ γₜ γ_src γz src lexp_src ldes dq dq' expected desired s) -∗
       {{{ token γₜ ∗ dst ↦∗ vdst }}}
@@ -1646,11 +1646,61 @@ Lemma gmap_injective_insert `{Countable K, Countable V} (k : K) (v : V) (m : gma
   Proof.
     iIntros (Hlen_dst Hlen_src) "#Hcasinv !# %Φ [Hγₜ Hdst] HΦ".
     rewrite -(Loc.add_0 src). change 0%Z with (Z.of_nat O). simplify_eq.
-    wp_apply (wp_array_copy_to_protected_off with "[//] [Hγₜ Hdst]").
+    wp_apply (wp_array_copy_to_protected_off_inv with "[//] [Hγₜ Hdst]").
     { simpl. symmetry. eassumption. }
     { iFrame. }
     iIntros "[Hγₜ Hdst]".
     rewrite drop_0.
+    iApply ("HΦ" with "[$]").
+  Qed.
+
+ Lemma wp_array_copy_to_protected_off (dst : loc) (src : blk) vdst vsrc γz s γ_src (i : nat) :
+    i + length vdst = length vsrc →
+      {{{ dst ↦∗ vdst ∗ Shield hazptr γz s (Validated src γ_src (node vsrc) (length vsrc)) }}}
+        array_copy_to #dst #(src +ₗ i) #(length vdst)
+      {{{ RET #(); dst ↦∗ drop i vsrc ∗ Shield hazptr γz s (Validated src γ_src (node vsrc) (length vsrc)) }}}.
+  Proof.
+    iIntros (Hlen Φ) "[Hdst S] HΦ". 
+    iLöb as "IH" forall (dst vdst i Hlen).
+    wp_rec. wp_pures. destruct vdst as [|v vdst].
+    { simplify_list_eq. wp_pures. iApply "HΦ".
+      iModIntro. replace i with (length vsrc) in * by lia.
+      rewrite drop_all. iFrame. }
+    iDestruct (array_cons with "Hdst") as "[Hv Hvdst]".
+    simplify_list_eq. wp_pures.
+    wp_bind (! _)%E.
+    wp_apply (shield_read with "S") as (? v') "(S & -> & %EQ)"; [solve_ndisj|lia|].
+    wp_store. wp_pures.
+    rewrite Loc.add_assoc.
+    change 1%Z with (Z.of_nat 1).
+    rewrite -Nat2Z.inj_sub /=; last lia.
+    rewrite Nat.sub_0_r -Nat2Z.inj_add Nat.add_1_r.
+    wp_apply ("IH" with "[] [$Hvdst] [$S]").
+    { iPureIntro. lia. }
+    iIntros "[Hvdst S]".
+    iApply "HΦ". 
+    iPoseProof (array_cons with "[$Hv $Hvdst]") as "Hvdst".
+    assert (v' :: drop (S i) vsrc = drop i vsrc) as ->.
+    { apply list_eq. intros [|j].
+      { rewrite /= -EQ lookup_drop Nat.add_0_r //. }
+      do 2 rewrite /= lookup_drop.
+      f_equal. lia. }
+    iFrame.
+  Qed.
+
+  Lemma wp_array_copy_to_protected (dst : loc) (src : blk) vdst vsrc γz s γ_src n :
+    length vdst = n → length vsrc = n →
+      {{{ dst ↦∗ vdst ∗ Shield hazptr γz s (Validated src γ_src (node vsrc) n) }}}
+        array_copy_to #dst #src #n
+      {{{ RET #(); dst ↦∗ vsrc ∗ Shield hazptr γz s (Validated src γ_src (node vsrc) n) }}}.
+  Proof.
+    iIntros (Hlen_dst Hlen_src Φ) "[Hdst S] HΦ".
+    rewrite -(Loc.add_0 src). change 0%Z with (Z.of_nat O). simplify_eq.
+    wp_apply (wp_array_copy_to_protected_off with "[Hdst S]").
+    { simpl. symmetry. eassumption. }
+    { rewrite Hlen_src. iFrame. }
+    iIntros "[Hdst S]".
+    rewrite drop_0 Hlen_src.
     iApply ("HΦ" with "[$]").
   Qed.
 
