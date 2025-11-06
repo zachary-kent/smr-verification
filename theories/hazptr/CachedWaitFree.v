@@ -1637,19 +1637,20 @@ Lemma gmap_injective_insert `{Countable K, Countable V} (k : K) (v : V) (m : gma
     { iCombine "Hγₜ Hlintok" gives %[]. }
   Qed.
 
-  Lemma wp_array_copy_to_protected (dst : loc) (src : blk) vdst vsrc γz s γ_src n :
-    length vdst = n → length vsrc = n →
-      {{{ dst ↦∗ vdst ∗ Shield hazptr γz s (Validated src γ_src (node vsrc) n) }}}
+  Lemma wp_array_copy_to_protected (dst : loc) (src : blk) (vdst expected desired : list val) (n : nat) ψ γ γₑ γₗ γₜ γ_src γz lexp_src ldes dq dq' s :
+    length vdst = n → length expected = n →
+    inv casN (cas_inv ψ γ γₑ γₗ γₜ γ_src γz src lexp_src ldes dq dq' expected desired s) -∗
+      {{{ token γₜ ∗ dst ↦∗ vdst }}}
         array_copy_to #dst #src #n
-      {{{ RET #(); dst ↦∗ vsrc ∗ Shield hazptr γz s (Validated src γ_src (node vsrc) n) }}}.
+      {{{ RET #(); token γₜ ∗ dst ↦∗ expected }}}.
   Proof.
-    iIntros (Hlen_dst Hlen_src Φ) "[Hdst S] HΦ".
+    iIntros (Hlen_dst Hlen_src) "#Hcasinv !# %Φ [Hγₜ Hdst] HΦ".
     rewrite -(Loc.add_0 src). change 0%Z with (Z.of_nat O). simplify_eq.
-    wp_apply (wp_array_copy_to_protected_off with "[Hdst S]").
+    wp_apply (wp_array_copy_to_protected_off with "[//] [Hγₜ Hdst]").
     { simpl. symmetry. eassumption. }
-    { rewrite Hlen_src. iFrame. }
-    iIntros "[Hdst S]".
-    rewrite drop_0 Hlen_src.
+    { iFrame. }
+    iIntros "[Hγₜ Hdst]".
+    rewrite drop_0.
     iApply ("HΦ" with "[$]").
   Qed.
 
