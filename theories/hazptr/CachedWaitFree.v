@@ -182,22 +182,22 @@ Section cached_wf.
 
   Variable (hazptr_code : hazard_pointer_code).
 
-  Lemma wp_array_equal (l l' : loc) (dq dq' : dfrac) (vs vs' : list val) :
-    length vs = length vs' → Forall2 vals_compare_safe vs vs' →
+  Lemma wp_array_equal (l l' : loc) (dq dq' : dfrac) (vs vs' : list val) n :
+    length vs = n → length vs' = n → Forall2 vals_compare_safe vs vs' →
     {{{ l ↦∗{dq} vs ∗ l' ↦∗{dq'} vs' }}}
-      array_equal #l #l' #(length vs)
+      array_equal #l #l' #n
     {{{ RET #(bool_decide (vs = vs')); l ↦∗{dq} vs ∗ l' ↦∗{dq'} vs' }}}.
-    iIntros (Hlen Hsafe Φ) "[Hl Hl'] HΦ".
+    iIntros (Hlen Hlen' Hsafe Φ) "[Hl Hl'] HΦ".
     Proof.
-    iInduction vs as [|v vs] "IH" forall (l l' vs' Hsafe Hlen) "HΦ".
-    - wp_rec. wp_pures.
-      apply symmetry, length_zero_iff_nil in Hlen as ->.
-      iModIntro.
-      rewrite bool_decide_eq_true_2; last done.
-      iApply "HΦ". iFrame.
-    - wp_rec. wp_pures.
+    iInduction vs as [|v vs] "IH" forall (n l l' vs' Hsafe Hlen Hlen') "HΦ".
+    - wp_rec. wp_pures. simplify_list_eq.
+      apply length_zero_iff_nil in Hlen' as ->.
+      wp_pures.
+      rewrite bool_decide_eq_true_2 //.
+      iApply ("HΦ" with "[$]").
+    - wp_rec. wp_pures. simplify_list_eq.
       destruct vs' as [| v' vs']; first discriminate.
-      inv Hlen. inv Hsafe.
+      inv Hlen'. inv Hsafe.
       repeat rewrite array_cons.
       iDestruct "Hl" as "[Hl Hlrest]".
       iDestruct "Hl'" as "[Hl' Hlrest']".
@@ -208,7 +208,7 @@ Section cached_wf.
         wp_pures.
         rewrite Z.sub_1_r.
         rewrite -Nat2Z.inj_pred /=; last lia.
-        iApply ("IH" $! _ _ vs' with "[//] [//] [$] [$]").
+        iApply ("IH" $! (length vs') _ _ vs' with "[//] [//] [//] [$] [$]").
         iIntros "!> [Hlrest Hlrest']".
         iSpecialize ("HΦ" with "[$]").
         destruct (decide (vs = vs')) as [-> | Hne].
@@ -2942,8 +2942,10 @@ Qed.
         iMod ("Hconsume" with "[$Hγ']") as "HΦ".
         iMod ("Hcl" with "[-Hlexp Hldes HΦ]") as "_".
         { iFrame "∗ %". }
-        iModIntro. iIntros "(Hcopy & %Hcopylen & Hbackup & #◯Hγᵥ & Hcons)".
+        iModIntro. 
+        iIntros "(Hcopy & %Hunboxed & %Hcopylen & Hprotected & #Habs & #Hlog & #Hcons)".
         wp_pures.
+        wp_apply wp_array_equal.
         wp_apply (wp_array_equal with "[$Hcopy $Hlexp]").
         { done. }
         { by apply all_vals_compare_safe. }
