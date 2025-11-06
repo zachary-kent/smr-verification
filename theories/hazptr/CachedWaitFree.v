@@ -2925,6 +2925,7 @@ Qed.
         rewrite -Hcopylen.
         wp_apply (wp_array_equal with "[$Hcopy $Hlexp]").
         { lia. }
+        { lia. }
         { apply all_vals_compare_safe; auto with lia. }
         iIntros "[Hcopy Hlexp]".
         rewrite (bool_decide_eq_false_2 (actual = expected)) //.
@@ -2945,18 +2946,19 @@ Qed.
         iModIntro. 
         iIntros "(Hcopy & %Hunboxed & %Hcopylen & Hprotected & #Habs & #Hlog & #Hcons)".
         wp_pures.
-        wp_apply wp_array_equal.
         wp_apply (wp_array_equal with "[$Hcopy $Hlexp]").
+        { done. }
         { done. }
         { by apply all_vals_compare_safe. }
         iIntros "[Hcopy Hlexp]".
-        rewrite bool_decide_eq_true_2; last done.
+        rewrite (bool_decide_eq_true_2 (desired = desired)) //.
         wp_pures.
         wp_apply (wp_array_equal with "[$Hlexp $Hldes]").
         { done. }
+        { done. }
         { by apply all_vals_compare_safe. }
         iIntros "[Hlexp Hldes]".
-        rewrite bool_decide_eq_true_2; last done.
+        rewrite (bool_decide_eq_true_2 (desired = desired)) //.
         wp_pures.
         iApply ("HΦ" with "[$]"). }
       iMod (ghost_var_alloc true) as "(%γₑ & Hγₑ & Hγₑ')".
