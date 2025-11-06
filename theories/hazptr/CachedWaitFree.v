@@ -1571,38 +1571,70 @@ Lemma gmap_injective_insert `{Countable K, Countable V} (k : K) (v : V) (m : gma
       by rewrite -not_true_iff_false Z.odd_spec -Odd_inj in H.
   Qed.
 
-  Lemma wp_array_copy_to_protected_off (dst : loc) (src : blk) vdst vsrc γz s γ_src (i : nat) :
-    i + length vdst = length vsrc →
-      {{{ dst ↦∗ vdst ∗ Shield hazptr γz s (Validated src γ_src (node vsrc) (length vsrc)) }}}
+  Lemma wp_array_copy_to_protected_off (dst : loc) (src : blk) (vdst expected desired : list val) (i : nat) ψ γ γₑ γₗ γₜ γ_src γz lexp_src ldes dq dq' s :
+    i + length vdst = length expected →
+    inv casN (cas_inv ψ γ γₑ γₗ γₜ γ_src γz src lexp_src ldes dq dq' expected desired s) -∗
+      {{{ token γₜ ∗ dst ↦∗ vdst }}}
         array_copy_to #dst #(src +ₗ i) #(length vdst)
-      {{{ RET #(); dst ↦∗ drop i vsrc ∗ Shield hazptr γz s (Validated src γ_src (node vsrc) (length vsrc)) }}}.
+      {{{ RET #(); token γₜ ∗ dst ↦∗ drop i expected }}}.
   Proof.
-    iIntros (Hlen Φ) "[Hdst S] HΦ". 
+    iIntros (Hlen) "#Hcasinv %Φ !# [Hγₜ Hdst] HΦ". 
     iLöb as "IH" forall (dst vdst i Hlen).
     wp_rec. wp_pures. destruct vdst as [|v vdst].
     { simplify_list_eq. wp_pures. iApply "HΦ".
-      iModIntro. replace i with (length vsrc) in * by lia.
+      iModIntro. replace i with (length expected) in * by lia.
       rewrite drop_all. iFrame. }
     iDestruct (array_cons with "Hdst") as "[Hv Hvdst]".
-    simplify_list_eq. wp_pures.
+    simplify_list_eq. wp_pure credit:"Hcredit'".
     wp_bind (! _)%E.
-    wp_apply (shield_read with "S") as (? v') "(S & -> & %EQ)"; [solve_ndisj|lia|].
-    wp_store. wp_pures.
-    rewrite Loc.add_assoc.
-    change 1%Z with (Z.of_nat 1).
-    rewrite -Nat2Z.inj_sub /=; last lia.
-    rewrite Nat.sub_0_r -Nat2Z.inj_add Nat.add_1_r.
-    wp_apply ("IH" with "[] [$Hvdst] [$S]").
-    { iPureIntro. lia. }
-    iIntros "[Hvdst S]".
-    iApply "HΦ". 
-    iPoseProof (array_cons with "[$Hv $Hvdst]") as "Hvdst".
-    assert (v' :: drop (S i) vsrc = drop i vsrc) as ->.
-    { apply list_eq. intros [|j].
-      { rewrite /= -EQ lookup_drop Nat.add_0_r //. }
-      do 2 rewrite /= lookup_drop.
-      f_equal. lia. }
-    iFrame.
+    iInv casN as "[(>Hcredit & Hψ & [%b >Hγₑ'] & >Hlin & S) | [(>Hcredit & AU & >Hγₑ' & >Hlin & S) | (>Hlintok & [%b >Hγₑ'] & [%b' >Hlin])]]" "Hclose".
+    { iMod (lc_fupd_elim_later with "Hcredit' S") as "S".
+      wp_apply (shield_read with "S") as (? v') "(S & -> & %EQ)".
+      { solve_ndisj. }
+      { lia. }
+      iMod ("Hclose" with "[Hcredit Hψ Hγₑ' Hlin S]").
+      { iLeft. iFrame. }
+      iModIntro.
+      wp_store. wp_pures.
+      rewrite Loc.add_assoc.
+      change 1%Z with (Z.of_nat 1).
+      rewrite -Nat2Z.inj_sub /=; last lia.
+      rewrite Nat.sub_0_r -Nat2Z.inj_add Nat.add_1_r.
+      wp_apply ("IH" with "[] [$Hγₜ] [$Hvdst]").
+      { iPureIntro. lia. }
+      iIntros "[Hγₜ Hvdst]".
+      iApply "HΦ". 
+      iPoseProof (array_cons with "[$Hv $Hvdst]") as "Hvdst".
+      assert (v' :: drop (S i) expected = drop i expected) as ->.
+      { apply list_eq. intros [|j].
+        { rewrite /= -EQ lookup_drop Nat.add_0_r //. }
+        do 2 rewrite /= lookup_drop.
+        f_equal. lia. }
+      iFrame. }
+    { iMod (lc_fupd_elim_later with "Hcredit' S") as "S".
+      wp_apply (shield_read with "S") as (? v') "(S & -> & %EQ)".
+      { solve_ndisj. }
+      { lia. }
+      iMod ("Hclose" with "[Hcredit AU Hγₑ' Hlin S]").
+      { iRight. iLeft. iFrame. }
+      iModIntro.
+      wp_store. wp_pures.
+      rewrite Loc.add_assoc.
+      change 1%Z with (Z.of_nat 1).
+      rewrite -Nat2Z.inj_sub /=; last lia.
+      rewrite Nat.sub_0_r -Nat2Z.inj_add Nat.add_1_r.
+      wp_apply ("IH" with "[] [$Hγₜ] [$Hvdst]").
+      { iPureIntro. lia. }
+      iIntros "[Hγₜ Hvdst]".
+      iApply "HΦ". 
+      iPoseProof (array_cons with "[$Hv $Hvdst]") as "Hvdst".
+      assert (v' :: drop (S i) expected = drop i expected) as ->.
+      { apply list_eq. intros [|j].
+        { rewrite /= -EQ lookup_drop Nat.add_0_r //. }
+        do 2 rewrite /= lookup_drop.
+        f_equal. lia. }
+      iFrame. }
+    { iCombine "Hγₜ Hlintok" gives %[]. }
   Qed.
 
   Lemma wp_array_copy_to_protected (dst : loc) (src : blk) vdst vsrc γz s γ_src n :
@@ -1914,12 +1946,12 @@ From smr Require Import helpers hazptr.spec_hazptr hazptr.spec_stack hazptr.code
               Shield hazptr γz shield Deactivated -∗
                 <<{ ∀∀ γ_backup vs, value γ γ_backup vs  }>> 
                   read' hazptr n #l #ver #shield @ ⊤,(↑readN ∪ ↑(ptrsN hazptrN)),↑(mgmtN hazptrN)
-                <<{ ∃∃ (γ_backup : gname) (backup copy : blk) (t : nat), value γ γ_backup vs | 
+                <<{ ∃∃ (γ_backup : gname) (backup copy : blk) (t : nat), value γ γ_backup vs ∗ Shield hazptr γz shield (Validated backup γ_backup (node vs) n) | 
                     RET (#copy, #(Some (Loc.blk_to_loc backup) &ₜ t))%V; 
                       copy ↦∗ vs ∗
                       ⌜Forall val_is_unboxed vs⌝ ∗
                       ⌜length vs = n⌝ ∗
-                      Shield hazptr γz shield (Validated backup γ_backup (node vs) n) ∗
+                      (* Shield hazptr γz shield (Validated backup γ_backup (node vs) n) ∗ *)
                       abstraction_frag_own γ_abs γ_backup backup ∗
                       log_frag_own γₕ γ_backup vs ∗
                       if bool_decide (t = 0) then
@@ -1948,9 +1980,10 @@ From smr Require Import helpers hazptr.spec_hazptr hazptr.spec_stack hazptr.code
       { iExists ver₁, log₁, abstraction₁, actual₁, cache₁, γ_backup₁, γ_backup₁', backup₁, backup₁', index₁, validated₁, t₁.
         iFrame "∗ # %". }
       by iFrame. }
-    iIntros "(Hbackup & Hmanaged & Hprotected)".
+    iIntros "(Hbackup & Hmanaged & [Hprotected)".
+
     iDestruct "Hlin" as "[_ Hcommit]".
-    iMod ("Hcommit" $! _ backup₁ dst t₁ with "Hγ'") as "HΦ".
+    iMod ("Hcommit" $! _ backup₁ dst t₁ with "[$Hγ' $Hprotected]") as "HΦ".
     (* iDestruct (index_auth_frag_agree with "●Hγᵢ ◯Hγᵢ") as "%Hindexagree". *)
     iMod (log_frag_alloc γ_backup₁ with "●Hlog") as "[●Hlog #◯Hlog₁]".
     { eassumption. }
@@ -1965,7 +1998,7 @@ From smr Require Import helpers hazptr.spec_hazptr hazptr.spec_stack hazptr.code
       destruct (Nat.even ver₁) eqn:Heven₁; last done. simplify_eq.
       iMod (validated_auth_frag_alloc γ_backup₁ with "●Hγ_val") as "[●Hγ_val #◯Hγ_val₁]".
       { naive_solver. }
-      iMod ("Hcl" with "[-HΦ Hprotected Hdst]") as "_".
+      iMod ("Hcl" with "[-HΦ Hdst]") as "_".
       { iExists ver₁, log₁, abstraction₁, actual₁, actual₁, γ_backup₁, γ_backup₁, backup₁, backup₁, index₁, validated₁, 0.
         iFrame "∗ # %". rewrite bool_decide_eq_true_2 //. iSplit; auto.
         rewrite Heven₁. iFrame "∗ # %". }
@@ -2027,7 +2060,7 @@ From smr Require Import helpers hazptr.spec_hazptr hazptr.spec_stack hazptr.code
       wp_pures.
       rewrite (bool_decide_eq_false_2 (Z.of_nat t₁ = 0)) //; last lia.
       wp_pures.
-      wp_apply (wp_array_copy_to_protected _ _ _ with "[$Hdst $Hprotected]").
+      wp_apply (wp_array_copy_to_protected _ _ _ with "[$Hdst]").
       { lia. }
       { lia. }
       iIntros "[Hdst S]". wp_pures.
@@ -2964,9 +2997,10 @@ Qed.
       iMod (ghost_var_alloc true) as "(%γₑ & Hγₑ & Hγₑ')".
       iMod (ghost_var_alloc true) as "(%γₗ & Hγₗ & Hγₗ')".
       iMod token_alloc as "[%γₜ Hγₜ]".
-      iMod (registry_update γₗ γₑ backup with "●Hγᵣ") as "[●Hγᵣ #◯Hγᵣ]". 
+      iMod (registry_update γₗ γₑ γ_backup with "●Hγᵣ") as "[●Hγᵣ #◯Hγᵣ]". 
       iDestruct "Hlin" as "[Hclose _]".
       iMod ("Hclose" with "Hγ'") as "AU".
+      iMod (inv_alloc casN _ (cas_inv Φ γ γₑ γₗ γₜ γ_exp γd lexp lexp_src ldes dq dq' expected desired s)) as "#Hcasinv".
       iMod (inv_alloc casN _ (cas_inv Φ γ γₑ γₗ γₜ lexp ldes dq dq' expected desired) with "[Hγₑ' Hγₗ' AU Hcredit]") as "#Hcasinv".
       { iRight. iLeft. iFrame. }
       iMod ("Hcl" with "[-Hlexp Hldes Hγₜ]") as "_".
