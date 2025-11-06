@@ -1914,7 +1914,7 @@ From smr Require Import helpers hazptr.spec_hazptr hazptr.spec_stack hazptr.code
               Shield hazptr γz shield Deactivated -∗
                 <<{ ∀∀ γ_backup vs, value γ γ_backup vs  }>> 
                   read' hazptr n #l #ver #shield @ ⊤,(↑readN ∪ ↑(ptrsN hazptrN)),↑(mgmtN hazptrN)
-                <<{ ∃∃ (γ_backup : gname) (backup copy : blk) (t : nat) (ver : nat), value γ γ_backup vs | 
+                <<{ ∃∃ (γ_backup : gname) (backup copy : blk) (t : nat), value γ γ_backup vs | 
                     RET (#copy, #(Some (Loc.blk_to_loc backup) &ₜ t))%V; 
                       copy ↦∗ vs ∗
                       ⌜Forall val_is_unboxed vs⌝ ∗
@@ -1950,7 +1950,7 @@ From smr Require Import helpers hazptr.spec_hazptr hazptr.spec_stack hazptr.code
       by iFrame. }
     iIntros "(Hbackup & Hmanaged & Hprotected)".
     iDestruct "Hlin" as "[_ Hcommit]".
-    iMod ("Hcommit" $! _ backup₁ dst t₁ ver with "Hγ'") as "HΦ".
+    iMod ("Hcommit" $! _ backup₁ dst t₁ with "Hγ'") as "HΦ".
     (* iDestruct (index_auth_frag_agree with "●Hγᵢ ◯Hγᵢ") as "%Hindexagree". *)
     iMod (log_frag_alloc γ_backup₁ with "●Hlog") as "[●Hlog #◯Hlog₁]".
     { eassumption. }
@@ -2911,7 +2911,7 @@ Qed.
         iMod ("Hcl" with "[-Hlexp Hldes AU Hcredit]") as "_".
         { iFrame "∗ %". }
         by iFrame. }
-      iIntros (marked_backup' copy backup' ver γₚ) "Hγ'".
+      iIntros (γ_backup' backup' copy t') "Hγ'".
       iCombine "Hγ Hγ'" gives %[_ [=<-]].
       destruct (decide (actual = expected)) as [-> | Hne]; first last.
       { iDestruct "Hlin" as "[_ Hconsume]".
@@ -2920,15 +2920,21 @@ Qed.
         iMod ("Hcl" with "[-Hlexp Hldes HΦ]") as "_".
         { iFrame "∗ %". }
         iModIntro.
-        iIntros "(Hcopy & %Hunboxed & %Hcopylen & Hbackup & ◯Hγᵥ & Hcons)".
+        iIntros "(Hcopy & %Hunboxed & %Hcopylen & Hprotected & #Habs & #Hlog & #Hcons)".
         wp_pures.
         rewrite -Hcopylen.
         wp_apply (wp_array_equal with "[$Hcopy $Hlexp]").
-        { done. }
-        { by apply all_vals_compare_safe. }
+        { lia. }
+        { apply all_vals_compare_safe; auto with lia. }
         iIntros "[Hcopy Hlexp]".
-        rewrite bool_decide_eq_false_2; last done.
-        wp_pures. iApply ("HΦ" with "[$]"). }
+        rewrite (bool_decide_eq_false_2 (actual = expected)) //.
+        wp_pures.
+        wp_apply (hazptr.(shield_drop_spec) with "[//] [$]").
+        { solve_ndisj. }
+        iIntros "_".
+        wp_pures.
+        iModIntro.
+        iApply ("HΦ" with "[$]"). }
       destruct (decide (expected = desired)) as [-> | Hne].
       { iDestruct "Hlin" as "[_ Hconsume]".
         rewrite bool_decide_eq_true_2; last done.
