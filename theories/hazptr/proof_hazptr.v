@@ -93,7 +93,7 @@ Definition UU γtok γinfo γptrs γU γR γV info sbvmap slist : iProp :=
   (⊤ ∖ gset_to_coPset (dom info),sids_from (length slist)) ↦P2[γV] false ∗
   toks γtok (⊤ ∖ gset_to_coPset (dom info)) (sids_from (length slist)).
 
-Definition GhostQuadrants γtok γinfo γptrs γU γR γV info sbvmap slist : iProp :=
+Definition GhostQuadrants γtok eγinfo γptrs γU γR γV info sbvmap slist : iProp :=
   CC γtok γinfo γptrs γU γR γV info sbvmap slist ∗
   CU γtok γinfo γptrs γU γR γV info sbvmap slist ∗
   UC γtok γinfo γptrs γU γR γV info sbvmap slist ∗
