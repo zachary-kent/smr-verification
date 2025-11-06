@@ -2613,7 +2613,7 @@ Qed.
     registered γᵣ i γₗ γₑ γ_backup -∗
     abstraction_frag_own γ_abs γ_backup backup -∗
     log_frag_own γₕ γ_backup expected -∗
-    (l +ₗ domain_off) ↦□ #d -∗ 
+    (l +ₗ domain_off) ↦□ #d -∗
     hazptr.(IsHazardDomain) γd d -∗
     hazptr.(Managed) γd backup γ_backup n (node desired) -∗
     hazptr.(Shield) γd s' (NotValidated new_backup) -∗
@@ -2857,33 +2857,51 @@ Qed.
       + auto.
   Qed.
 
-  Lemma cas_spec (γ γᵥ γₕ γᵣ γᵢ γ_val γ_vers γₒ γd γ_abs : gname) (l lexp ldes : loc) (dq dq' : dfrac) (expected desired : list val) (n : nat) :
+  Lemma cas_spec (γ γᵥ γₕ γᵣ γᵢ γ_val γ_vers γₒ γd γ_abs : gname) (l lexp ldes : loc) (dq dq' : dfrac) (expected desired : list val) (n : nat) (d : loc) :
     n > 0 →
     length expected = n →
     length desired = n →
     Forall val_is_unboxed expected →
-    Forall val_is_unboxed desired → 
-      inv readN (read_inv γ γᵥ γₕ γᵢ γ_val γd γ_abs l n) -∗
-        inv cached_wfN (cached_wf_inv γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ γ_abs γd l n) -∗
-          lexp ↦∗{dq} expected -∗
-            ldes ↦∗{dq'} desired -∗
-              <<{ ∀∀ backup actual, value γ backup actual  }>> 
-                cas hazptr n #l #lexp #ldes @ ↑N
-              <<{ if bool_decide (actual = expected) then ∃ backup', value γ backup' desired else value γ backup actual |
-                  RET #(bool_decide (actual = expected)); lexp ↦∗{dq} expected ∗ ldes ↦∗{dq'} desired }>>.
+    Forall val_is_unboxed desired →
+    (l +ₗ domain_off) ↦□ #d -∗
+        hazptr.(IsHazardDomain) γd d -∗
+          inv readN (read_inv γ γᵥ γₕ γᵢ γ_val γd γ_abs l n) -∗
+            inv cached_wfN (cached_wf_inv γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ γ_abs γd l n) -∗
+              lexp ↦∗{dq} expected -∗
+                ldes ↦∗{dq'} desired -∗
+                  <<{ ∀∀ backup actual, value γ backup actual  }>> 
+                    cas hazptr n #l #lexp #ldes @ ⊤, (↑cached_wfN ∪ ↑readN ∪ ↑(ptrsN hazptrN)), ↑(mgmtN hazptrN)
+                  <<{ if bool_decide (actual = expected) then ∃ backup', value γ backup' desired else value γ backup actual |
+                      RET #(bool_decide (actual = expected)); lexp ↦∗{dq} expected ∗ ldes ↦∗{dq'} desired }>>.
     Proof.
-      iIntros (Hpos Hleneq Hexpunboxed Hdesunboxed) "#Hreadinv #Hinv Hlexp Hldes %Φ AU". 
+      iIntros (Hpos Hlen_exp Hlen_des Hexpunboxed Hdesunboxed) "#Hd #Hdom #Hreadinv #Hinv Hlexp Hldes %Φ AU". 
       wp_rec.
       wp_pure credit:"Hcredit".
       wp_pures.
-      awp_apply (read'_spec with "[//]").
+      wp_bind (! _)%E.
+      iInv readN as "(%ver₁ & %log₁ & %abstraction₁ & %actual₁ & %cache₁ & %γ_backup₁ & %γ_backup₁' & %backup₁ & %backup₁' & %index₁ & %validated₁ & %t₁ & >Hver & >Hbackup & >Hγ & >%Hunboxed₁ & Hbackup_managed & >%Hindex₁ & >%Htag₁ & >%Hlenactual₁ & >%Hlencache₁ & >%Hloglen₁ & Hlogtokens & >%Hlogged₁ & >●Hγₕ & >●Hγ_abs & >%Habs_backup₁ & >%Habs_backup₁' & >%Hlenᵢ₁ & >%Hnodup₁ & >%Hrange₁ & >●Hγᵢ & >●Hγᵥ & >Hcache & >%Hcons₁ & Hlock & >●Hγ_val & >%Hvalidated_iff₁ & >%Hvalidated_sub₁ & >%Hdom_eq₁)" "Hcl".
+      wp_load.
+      iPoseProof (mono_nat_lb_own_get with "●Hγᵥ") as "#Hlb".
+      iMod ("Hcl" with "[-AU Hlexp Hldes]") as "_".
+      { iExists ver₁, log₁, abstraction₁, actual₁, cache₁, γ_backup₁, γ_backup₁', backup₁, backup₁', index₁, validated₁, t₁.
+      rewrite Loc.add_0. iFrame "∗ # %". }
+      iModIntro.
+      wp_pures.
+      wp_load.
+      wp_pure credit:"Hcredit".
+      wp_pures.
+      wp_apply (hazptr.(shield_new_spec) with "[//] [//]") as (s) "S".
+      { set_solver. }
+      wp_pures.
+      awp_apply (read'_spec with "[//] [//] [//] [//] [$]").
       { done. }
       rewrite /atomic_acc /=.
-      iInv cached_wfN as "(%ver' & %log & %actual & %marked_backup & %backup & %requests & %vers & %index & %order & %idx & ●Hγᵥ' & >Hvalidated & >Hγ & >%Hcons & >●Hγₕ & >●Hγᵣ & Hreginv & >●Hγ_vers & >%Hvers & Hord)" "Hcl".
-      iMod "AU" as (backup'' actual') "[Hγ' Hlin]".
+      iInv cached_wfN as "(%ver & %log & %abstraction & %actual & %γ_backup & %backup & %requests & %vers & %index & %order & %idx & %t & >●Hγᵥ & >Hbackup & >Hγ & >%Hlog & >%Habs & >●Hγₕ & >●Hγ_abs & >●Hγᵣ & Hreginv & >●Hγ_vers & >%Hdomvers & >%Hvers & >●Hγᵢ & >●Hγₒ & >%Hdomord & >%Hinj & >%Hidx & >%Hmono & >%Hubord)" "Hcl".
+      (* iCombine "Hγ Hγ'" gives %[_ [=<-<-]]. *)
+      iMod "AU" as (? ?) "[Hγ' Hlin]".
       rewrite /value.
       iCombine "Hγ Hγ'" gives %[_ [=<-<-]].
-      iExists backup, actual.
+      iExists γ_backup, actual.
       iFrame "Hγ'".
       iModIntro.
       iSplit.
