@@ -2073,7 +2073,7 @@ Lemma read'_spec_inv (actual₁ cache₁ copy desired : list val) (γ γᵥ γ�
     length copy = n →
     StronglySorted Nat.le vers →
     ver ≤ ver₁ →
-    Forall (Nat.le ver₁) vers →
+    Forall (Nat.le ver) vers →
     (if bool_decide (t₁ = 0) then Nat.Even ver₁ ∧ actual₁ = cache₁ ∧ γ_backup₁ = γ_backup₁' else t₁ = 1) →
     (if Nat.even ver₁ then log₁ !! γ_backup₁' = Some cache₁ else t₁ = 1) →
     inv readN (read_inv γ γᵥ γₕ γᵢ γ_val γz γ_abs l n) -∗
@@ -3253,22 +3253,45 @@ Qed.
       rewrite bool_decide_eq_true_2 //.
       simpl.
       by iFrame. }
-    iMod ("Hcl" with "[-Hlexp Hldes Hγₜ]") as "_".
-    { rewrite /cached_wf_inv.
-      iFrame "∗ %".
-      rewrite big_sepL_singleton /request_inv bool_decide_eq_true_2; last done.
-      iFrame.
-      iSplit.
-      { iPureIntro. rewrite elem_of_dom /is_Some. rewrite -lookup_fmap lookup_fmap_Some in Hcons.
-        destruct Hcons as ([? ?] & <- & ?). eauto. }
-      iExists Φ, γₜ, lexp, ldes, dq, dq', expected, desired.
-      rewrite bool_decide_eq_true_2; last done.
-      iFrame "∗ #". }
-    iIntros "!> (Hcopy & %Hunboxed & _ & #◯Hγₕ & #◯Hγᵥ & Hpost)".
+    iMod ("Hcl" with "[-Hlexp Hldes Hdst Hγₜ]") as "_".
+    { iExists ver₁, log₁, abstraction₁, expected, cache₁, γ_backup₁, γ_backup₁', backup₁, backup₁', index₁, validated₁, t₁.
+      iFrame "∗ %". }
+    iModIntro.
     wp_pures.
-    wp_apply (wp_array_equal with "[$Hcopy $Hlexp]").
+    wp_apply (read'_spec_inv expected cache₁ vdst with "[//] [//] [//] [//] [//] [//] [//] [$] [$]"); try done.
+    iIntros "[Hγₜ Hdst]".
+    wp_pures.
+    wp_apply (wp_array_equal with "[$Hdst $Hlexp]").
+    { done. }
     { done. }
     { by apply all_vals_compare_safe. }
+    iIntros "[Hdst Hlexp]".
+    rewrite bool_decide_eq_true_2 //.
+    wp_pures.
+    wp_apply (wp_array_equal with "[$Hlexp $Hldes]").
+    { done. }
+    { done. }
+    { apply all_vals_compare_safe; auto with lia. }
+    iIntros "[Hlexp Hldes]".
+    rewrite bool_decide_eq_false_2 //.
+    wp_pures.
+    wp_apply (wp_array_clone with "[$]").
+    { lia. }
+    { lia. }
+    iIntros (ldes') "[Hldes' Hldes]".
+    wp_pures.
+    wp_apply (hazptr.(shield_new_spec) with "[//] [//]").
+    { solve_ndisj. }
+    iIntros (s') "S'".
+    wp_pures.
+    change #ldes' with #(oblk_to_lit (Some ldes')) at 5.
+    wp_apply (hazptr.(shield_set_spec) with "[$] [$]").
+    { solve_ndisj. }
+    iIntros "S'".
+    wp_pures.
+
+
+
     iIntros "[Hcopy Hlexp]".
     rewrite bool_decide_eq_true_2; last done.
     wp_pures.
