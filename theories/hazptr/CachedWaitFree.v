@@ -3487,9 +3487,10 @@ Qed.
         iInv casN as "[[S H] | [>Hlintok _]]" "Hclose".
         + wp_cmpxchg_fail.
           iPoseProof (hazptr.(shield_managed_agree) with "S Hbackup_managed") as "->".
-          iMod  (validated_auth_frag_agree with "●Hγ_val )
+          iPoseProof (validated_auth_frag_agree with "●Hγ_val ◯Hγ_val₂'") as "%Hvalid₃".
+          set_solver.
           (* set_solver. *)
-        + iCombine "Hγₜ Hlintok" gives %[].
+        + iCombine "Hγₜ Hlintok" gives %[]. }
         
       (* Backup went validated -> invalidated: impossible *)
 
