@@ -3420,12 +3420,20 @@ Qed.
       { naive_solver. }
       clear Hne₁ Hinvalid₂.
       wp_cmpxchg_fail.
+      iInv casN as "[[S H] | [>Hlintok _]]" "Hclose"; first last.
+      { iCombine "Hγₜ Hlintok" gives %[]. }
+      iMod (lc_fupd_elim_later with "Hcredit S") as "S".
+      iPoseProof (hazptr.(shield_managed_agree) with "S Hbackup_managed₂") as "->".
+      iMod ("Hclose" with "[S H]") as "_".
+      { iLeft. iFrame. }
       iMod ("Hcl'" with "[$●Hγᵥ' $Hbackup' $Hγ' $●Hγₕ' $●Hγ_abs' $●Hγᵣ $Hreginv $●Hγ_vers $●Hγᵢ' $●Hγₒ]") as "_".
       { iFrame "%". }
-      iModIntro.
-      iMod ("Hcl" with "[-Hdst Hlexp Hldes Hldes' †Hldes' S' Hγₜ Hcredit]") as "_".
+      iMod ("Hcl" with "[-Hdst Hlexp Hldes Hldes' †Hldes' S' Hγₜ]") as "_".
       { iExists ver₂, log₂, abstraction₂, actual₂, cache₂, γ_backup₂, γ_backup₂', backup₁, backup₂', index₂, validated₂, 0. iFrame "∗ %". }
-      iModIntro.
+      iApply fupd_mask_intro.
+      { set_solver. }
+      iIntros ">_ !>".
+      wp_pure credit:"Hcredit".
       wp_pures.
       wp_bind (CmpXchg _ _ _)%E.
       iInv readN as "(%ver₃ & %log₃ & %abstraction₃ & %actual₃ & %cache₃ & %γ_backup₃ & %γ_backup₃' & %backup₃ & %backup₃' & %index₃ & %validated₃ & %t₃ & >Hver & >Hbackup & >Hγ & >%Hunboxed₃ & Hbackup_managed & >%Hindex₃ & >%Htag₃ & >%Hlenactual₃ & >%Hlencache₃ & >%Hloglen₃ & Hlog & >%Hlogged₃ & >●Hγₕ & >●Hγ_abs & >%Habs_backup₃ & >%Habs_backup'₃ & >%Hlenᵢ₃ & >%Hnodup₃ & >%Hrange₃ & >●Hγᵢ & >●Hγᵥ & >Hcache & >%Hcons₃ & Hlock & >●Hγ_val & >%Hvalidated_iff₃ & >%Hvalidated_sub₃ & >%Hdom_eq₃)" "Hcl".
@@ -3474,6 +3482,18 @@ Qed.
         iIntros "_".
         wp_pures.
         by iModIntro. }
+      destruct (decide (t₃ = 1)) as [-> | Hne₃].
+      { assert (γ_backup₃ ∉ validated₃) as Hinvalid₃ by naive_solver.
+        iInv casN as "[[S H] | [>Hlintok _]]" "Hclose".
+        + wp_cmpxchg_fail.
+          iPoseProof (hazptr.(shield_managed_agree) with "S Hbackup_managed") as "->".
+          iMod  (validated_auth_frag_agree with "●Hγ_val )
+          (* set_solver. *)
+        + iCombine "Hγₜ Hlintok" gives %[].
+        
+      (* Backup went validated -> invalidated: impossible *)
+
+       }
       
 
 
