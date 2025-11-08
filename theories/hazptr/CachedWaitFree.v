@@ -2497,7 +2497,7 @@ Qed.
     + iCombine "Hγₜ Hlintok" gives %[].
   Qed.
 
-  Lemma wp_try_validate (γ γᵥ γₕ γᵣ γᵢ γ_val γ_vers γₒ γd γ_abs γ_backup : gname) (l l_desired backup : blk) (dq : dfrac)
+  Lemma wp_try_validate (γ γᵥ γₕ γᵣ γᵢ γ_val γ_vers γₒ γd γ_abs γ_backup : gname) (l : loc) (l_desired backup : blk) (dq : dfrac)
                         (desired : list val) (ver ver₂ idx₂ : nat) (index₂ : list gname)
                         (abstraction : gmap gname blk) (order₂ : gmap gname nat) (n : nat) s :
     n > 0 → 
@@ -2897,6 +2897,7 @@ Qed.
       ⌜log₁ !! γ_new_backup = None⌝ ∗
       (lexp ↦∗{dq} expected ∗ ldes ↦∗{dq'} desired -∗ Φ #true) ∗
       vers_frag_own γ_vers γ_new_backup ver₁ ∗
+      abstraction_frag_own γ_abs γ_new_backup new_backup ∗
       log_frag_own γₕ γ_new_backup desired ∗
       vers_frag_own γₒ γ_new_backup (S idx₁) ∗
       (* Protection for old backup *)
@@ -3300,28 +3301,18 @@ Qed.
     iCombine "Hγ Hγ'" gives %[_ [=<-<-]].
     rewrite /index_auth_own.
     iMod (own_auth_split_self'' with "●Hγᵢ") as "[●Hγᵢ #◯Hγᵢ₂]".
-    iMod (validated_auth_frag_dup with "●Hγ_val") as "[●Hγ_val ◯Hγ_val₂]".
+    iMod (validated_auth_frag_dup with "●Hγ_val") as "[●Hγ_val #◯Hγ_val₂]".
     iPoseProof (mono_nat_lb_own_get with "●Hγᵥ") as "#◯Hγᵥ₂".
     iDestruct (mono_nat_lb_own_valid with "●Hγᵥ ◯Hγᵥ₁") as %[_ Hle₂].
     iPoseProof (log_auth_frag_agree with "●Hγₕ ◯Hγₕ₁") as "%Hagreeₕ₁".
     iDestruct (mono_nat_lb_own_valid with "●Hγᵥ ◯Hγᵥ₁") as %[_ Hle₁].
+    iMod (own_auth_split_self' with "●Hγₒ") as "[●Hγₒ #◯Hγₒ₂]".
     destruct (decide (Some (Loc.blk_to_loc backup₁) &ₜ t₁ = Some (Loc.blk_to_loc backup₂) &ₜ t₂)) as [[=<- <-%(inj Z.of_nat)] | Hne'].
     - iDestruct (pointsto_combine with "Hbackup Hbackup'") as "[Hbackup _]".
       rewrite dfrac_op_own Qp.half_half.
       iMod token_alloc as "[%γ_new_backup Hγ_new_backup]".
       wp_cmpxchg_suc.
-
-    (* (backup backup' new_backup : blk) 
-    (γ_backup γ_backup' γ_new_backup : gname)
-    (l lexp ldes : blk)
-    (expected desired cache : list val)
-    (abstraction : gmap gname blk)
-    (log₁ : gmap gname (list eval))
-    (requests₁ : list (gname * gname * gname))
-    (vers₁ order₁ : gmap gname nat)
-    (index₁ : list gname)
-    (validated : gset gname) *)
-      iPoseProof (execute_lp backup₁ backup₂' ldes' γ_backup₁ γ_backup₂ γ_backup₂' γ_new_backup l lexp ldes expected desired _ actual₂ abstraction₂ log₂ requests₂ vers₂ order₂ index₂ validated₂ with "[$] [$] [$] [$] [$] [#] [$] [$] [Hbackup_managed₂] [$S'] [$] [$] [$] [$] [$] [$] [$] [Hcache] [Hlock] [Hcl] [$] [$] [Hreginv] [$] [$] [$] [Hcl'] [$●Hγᵢ] [$] [Hγ Hγ'] [$] [●Hγ_abs ●Hγ_abs']") as "H"; try done.
+      iMod (execute_lp backup₁ backup₂' ldes' γ_backup₁ γ_backup₂ γ_backup₂' γ_new_backup l lexp ldes expected desired _ actual₂ abstraction₂ log₂ requests₂ vers₂ order₂ index₂ validated₂ with "[$] [$] [$] [$] [$] [#] [$] [$] [Hbackup_managed₂] [$S'] [$] [$] [$] [$] [$] [$] [$] [Hcache] [Hlock] [Hcl] [$] [$] [Hreginv] [$] [$] [$] [Hcl'] [$●Hγᵢ] [$] [Hγ Hγ'] [$] [●Hγ_abs ●Hγ_abs'] [●Hγₕ ●Hγₕ']") as "(-> & -> & %Hnew_backup_fresh & HΦ & #◯Hγ_vers₂ & #◯Hγ_abs₂ & #◯Hγₕ₂ & #◯Hγₒ & S & S' & Hmanaged)"; try done.
       { by destruct (Nat.even ver₂). }
       { rewrite Hlen_exp //. }
       { destruct (decide (1 < size log₂)).
@@ -3334,6 +3325,41 @@ Qed.
       { iCombine "Hγ Hγ'" as "Hγ".
         rewrite Qp.quarter_quarter //. }
       { iCombine "●Hγ_abs ●Hγ_abs'" as "$". }
+      { iCombine "●Hγₕ ●Hγₕ'" as "$". }
+      iApply fupd_mask_intro.
+      { set_solver. }
+      iIntros ">_ !>".
+      wp_pures.
+      wp_apply (hazptr.(hazard_domain_retire_spec) with "[//] [$]").
+      { solve_ndisj. }
+      iIntros "_".
+      wp_pures.
+      wp_apply (wp_try_validate with "[//] [//] [//] [//] [//] [//] [//] [//] [//] [$]").
+      { exact inhabitant. }
+      { done. }
+      { eapply Hlen_des. }
+      { lia. }
+      { done. }
+      { done. }
+      { rewrite Hdomord₂ //. }
+      { done. }
+      { rewrite -not_elem_of_dom Hdomord₂ not_elem_of_dom //. }
+      iIntros "[Hldes S']".
+      wp_pures.
+      wp_apply (hazptr.(shield_drop_spec) with "[//] S").
+      { solve_ndisj. }
+      iIntros "_".
+      wp_pures.
+      wp_apply (hazptr.(shield_drop_spec) with "[//] S'").
+      { solve_ndisj. }
+      iIntros "_".
+      wp_pures.
+      iModIntro.
+      iApply ("HΦ" with "[$]").
+      
+
+
+
       
 
       wp_cmpxchg_suc.
