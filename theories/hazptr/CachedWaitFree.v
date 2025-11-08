@@ -3362,56 +3362,63 @@ Qed.
       wp_pures.
       iModIntro.
       iApply ("HΦ" with "[$]").
-    - destruct (decide (t₁ = 0)) as [-> | Hne₁].
-      + (* First backup was validated *)
+    - iPoseProof (abstraction_auth_frag_agree with "●Hγ_abs ◯Hγ_abs") as "%Hagreeabs₂".
+      destruct (decide (backup₂ = backup₁)) as [-> | Hne₂]; first last.
+      { iPoseProof (registry_agree with "●Hγᵣ ◯Hγᵣ") as "%Hregistered".
+        iPoseProof (big_sepL_lookup_acc with "Hreginv") as "[Hreq Hreginv]".
+        { done. }
+        simpl.
+        wp_cmpxchg_fail.
+        iMod (already_linearized with "[//] [$] [$] [$] [$] [$] [$]") as "(HΦ & S & Hreqinv)".
+        { done. }
+        { done. }
+        iSpecialize ("Hreginv" with "Hreqinv").
+        iMod ("Hcl'" with "[$●Hγᵥ' $Hbackup' $Hγ' $●Hγₕ' $●Hγ_abs' $●Hγᵣ $Hreginv $●Hγ_vers $●Hγᵢ' $●Hγₒ]") as "_".
+        { iFrame "%". }
+        iModIntro.
+        iMod ("Hcl" with "[-Hdst Hldes' †Hldes' S S' HΦ]") as "_".
+        { iExists ver₂, log₂, abstraction₂, actual₂, cache₂, γ_backup₂, γ_backup₂', backup₂, backup₂', index₂, validated₂, t₂. iFrame "∗ %". }
+        iModIntro.
+        wp_pures.
+        rewrite (bool_decide_eq_false_2 (#(Some (Loc.blk_to_loc backup₂) &ₜ t₂) = #(Some (Loc.blk_to_loc backup₁) &ₜ 0))); last naive_solver.
+        wp_pures.
+        wp_apply (hazptr.(shield_drop_spec) with "[//] S").
+        { solve_ndisj. }
+        iIntros "_".
+        wp_pures.
+        wp_apply (hazptr.(shield_drop_spec) with "[//] S'").
+        { solve_ndisj. }
+        iIntros "_".
+        wp_pures.
+        wp_apply (wp_free _ _ n with "[$Hldes' †Hldes']").
+        { lia. }
+        { rewrite Hlen_des //. }
+        iIntros "_".
+        wp_pures.
+        by iModIntro. }
+      destruct (decide (t₁ = 0)) as [-> | Hne₁].
+      { (* First backup was validated *)
         (* It cannot be the case that the unmarked pointers are equal, as this would imply that it became unvalidated *)
         rewrite (bool_decide_eq_true_2 (γ_backup₁ ∈ validated₁)); last naive_solver.
         iPoseProof (validated_auth_frag_agree with "●Hγ_val ◯Hγ_val₁") as "%Hvalid₁".
-        iPoseProof (abstraction_auth_frag_agree with "●Hγ_abs ◯Hγ_abs") as "%Hagreeabs₂".
-        destruct (decide (backup₁ = backup₂)) as [<- | Hne₁].
-        { destruct (decide (t₂ = 1%nat)) as [-> | Hvalid₂].
-          { assert (γ_backup₂ ∉ validated₂) as Hinvalid₂ by naive_solver.
-            iInv casN as "[[S H] | [>Hlintok _]]" "Hclose".
-            { wp_cmpxchg_fail.
-              iPoseProof (hazptr.(shield_managed_agree) with "S Hbackup_managed₂") as "->".
-              set_solver. }
-            { iCombine "Hγₜ Hlintok" gives %[]. } }
-          destruct (decide (t₂ = 0)) as [-> | Hvalid₂'].
-          - rewrite bool_decide_eq_true_2 // in Htag₂.
-          - rewrite bool_decide_eq_false_2 // in Htag₂. }
-          iPoseProof (registry_agree with "●Hγᵣ ◯Hγᵣ") as "%Hregistered".
-          iPoseProof (big_sepL_lookup_acc with "Hreginv") as "[Hreq Hreginv]".
-          { done. }
-          simpl.
-          wp_cmpxchg_fail.
-          (* iPoseProof (validated_auth_frag_agree with "●Hγ_val ◯Hγ_val") as "%Hmem". *)
-          iMod (already_linearized with "[//] [$] [$] [$] [$] [$] [$]") as "(HΦ & S & Hreqinv)".
-          { done. }
-          { done. }
-          iSpecialize ("Hreginv" with "Hreqinv").
-          iMod ("Hcl'" with "[$●Hγᵥ' $Hbackup' $Hγ' $●Hγₕ' $●Hγ_abs' $●Hγᵣ $Hreginv $●Hγ_vers $●Hγᵢ' $●Hγₒ]") as "_".
-          { iFrame "%". }
-          iModIntro.
-          iMod ("Hcl" with "[-Hdst Hldes' †Hldes' S S' HΦ]") as "_".
-          { iExists ver₂, log₂, abstraction₂, actual₂, cache₂, γ_backup₂, γ_backup₂', backup₂, backup₂', index₂, validated₂, t₂. iFrame "∗ %". }
-          iModIntro.
-          wp_pures.
-          rewrite bool_decide_eq_false_2; last naive_solver.
-          wp_pures.
-          wp_apply (hazptr.(shield_drop_spec) with "[//] S").
-          { solve_ndisj. }
-          iIntros "_".
-          wp_pures.
-          wp_apply (hazptr.(shield_drop_spec) with "[//] S'").
-          { solve_ndisj. }
-          iIntros "_".
-          wp_pures.
-          wp_apply (wp_free _ _ n with "[$Hldes' †Hldes']").
-          { lia. }
-          { rewrite Hlen_des //. }
-          iIntros "_".
-          wp_pures.
-          by iModIntro.
+        destruct (decide (t₂ = 1%nat)) as [-> | Hvalid₂].
+        - assert (γ_backup₂ ∉ validated₂) as Hinvalid₂ by naive_solver.
+          iInv casN as "[[S H] | [>Hlintok _]]" "Hclose".
+          + wp_cmpxchg_fail.
+            iPoseProof (hazptr.(shield_managed_agree) with "S Hbackup_managed₂") as "->".
+            set_solver.
+          + iCombine "Hγₜ Hlintok" gives %[].
+        - destruct (decide (t₂ = 0)) as [-> | Hvalid₂'].
+          + rewrite bool_decide_eq_true_2 // in Htag₂.
+          + rewrite bool_decide_eq_false_2 // in Htag₂. }
+      rewrite bool_decide_eq_false_2 // in Htag₁.
+      simplify_eq.
+      assert (t₂ ≠ 1) as Hinvalid₂ by naive_solver.
+      destruct (decide (t₂ = 0)) as [-> | Hinvalid₂']; first last.
+      { rewrite bool_decide_eq_false_2 // in Htag₂. }
+      clear Hne₁ Hinvalid₂.
+      
+      destruct (#(Some backup₂ &ₜ t₂) = #(Some backup₁ &ₜ 0)).
 
       wp_cmpxchg_suc.
       iNod (execute_lp )
