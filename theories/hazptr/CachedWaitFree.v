@@ -2814,7 +2814,7 @@ Qed.
     (backup backup₁' new_backup : blk) 
     (γ_backup γ_backup₁ γ_backup₁' γ_new_backup : gname)
     (l : loc) (lexp ldes : blk)
-    (expected desired cache actual₂ : list val)
+    (expected desired cache actual₁ : list val)
     (abstraction₁ : gmap gname blk)
     (log₁ : gmap gname (list val))
     (requests₁ : list (gname * gname * gname))
@@ -2845,6 +2845,7 @@ Qed.
     dom vers₁ ⊂ dom log₁ →
     gmap_injective order₁ →
     order₁ !! γ_backup₁ = Some idx₁ →
+    log₁ !! γ_backup₁ = Some actual₁ →
     StronglySorted (gmap_mono order₁) index₁ →
     map_Forall (λ _ idx', idx' ≤ idx₁) order₁ →
     Forall val_is_unboxed desired →
@@ -2859,7 +2860,7 @@ Qed.
     log_frag_own γₕ γ_backup expected -∗
     (l +ₗ domain_off) ↦□ #d -∗
     hazptr.(IsHazardDomain) γd d -∗
-    hazptr.(Managed) γd backup γ_backup₁ n (node actual₂) -∗
+    hazptr.(Managed) γd backup γ_backup₁ n (node actual₁) -∗
     hazptr.(Shield) γd s' (NotValidated new_backup) -∗
     (* Token for linearization *)
     token γₜ -∗
@@ -2879,18 +2880,19 @@ Qed.
     (▷ read_inv γ γᵥ γₕ γᵢ γ_val γd γ_abs l n ={⊤ ∖ ↑readN, ⊤}=∗ emp) -∗
     mono_nat_auth_own γᵥ (1/2) ver₁ -∗
     registry γᵣ requests₁ -∗
-    registry_inv γ γd backup expected requests₁ abstraction₁ -∗
+    registry_inv γ γd backup actual₁ requests₁ abstraction₁ -∗
     vers_auth_own γ_vers 1 vers₁ -∗
     index_auth_own γᵢ (1/2) index₁ -∗
     vers_auth_own γₒ 1 order₁ -∗
     (▷ cached_wf_inv γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ γ_abs γd l n ={⊤ ∖ ↑readN ∖ ↑cached_wfN, ⊤ ∖ ↑readN}=∗ emp) -∗
     index_auth_own γᵢ (1/4) index₁ -∗
     validated_auth_own γ_val 1 validated₁ -∗
-    ghost_var γ (1/2) (γ_backup₁, expected) -∗
+    ghost_var γ (1/2) (γ_backup₁, actual₁) -∗
     (l +ₗ backup_off) ↦ #(Some (Loc.blk_to_loc new_backup) &ₜ 1%nat) -∗
     abstraction_auth_own γ_abs 1 abstraction₁ -∗
     log_auth_own γₕ 1 log₁
     ={⊤ ∖ ↑readN ∖ ↑cached_wfN, ⊤}=∗
+      ⌜actual₁ = expected⌝ ∗
       ⌜γ_backup = γ_backup₁⌝ ∗
       ⌜log₁ !! γ_new_backup = None⌝ ∗
       (lexp ↦∗{dq} expected ∗ ldes ↦∗{dq'} desired -∗ Φ #true) ∗
@@ -2902,10 +2904,10 @@ Qed.
       (* Protection for new backup *)
       hazptr.(Shield) γd s' (Validated new_backup γ_new_backup (node desired) n) ∗
       (* Managed for old backup *)
-      Managed hazptr γd backup γ_backup n (node desired).
+      Managed hazptr γd backup γ_backup n (node expected).
   Proof.
     iIntros (Hpos Hlen_cache Hlen_exp Hlen_des Hne Hindex₁ Hcache₁ Hloglen₁ Hlenᵢ₁ Hnodup₁ Hrange₁ 
-            Hvallogged Hdomlogabs Hdomord Hvers₁ Hdomvers₁ Hinj₁ Hidx₁ Hmono₁ Hubord₁ Hunboxed Habs Habs').
+            Hvallogged Hdomlogabs Hdomord Hvers₁ Hdomvers₁ Hinj₁ Hidx₁ Hactual₁ Hmono₁ Hubord₁ Hunboxed Habs Habs').
     iIntros "#Hreadinv #Hinv #Hcasinv #◯Hγᵣ #◯Hγ_abs #◯Hγₕ #Hd #Hdom".
     iIntros "Hmanaged Hshield Hγₜ Htok Hnew_backup †Hnew_backup Hver Hlogtokens ●Hγᵥ Hcache".
     iIntros "Hlock Hcl ●Hγᵥ' ●Hγᵣ Hreginv ●Hγ_vers ●Hγᵢ' ●Hγₒ Hcl' ●Hγᵢ ●Hγ_val Hγ Hbackup₁ ●Hγ_abs ●Hγₕ".
@@ -3314,12 +3316,12 @@ Qed.
     (l lexp ldes : blk)
     (expected desired cache : list val)
     (abstraction : gmap gname blk)
-    (log₁ : gmap gname (list val))
+    (log₁ : gmap gname (list eval))
     (requests₁ : list (gname * gname * gname))
     (vers₁ order₁ : gmap gname nat)
     (index₁ : list gname)
     (validated : gset gname) *)
-      iPoseProof (execute_lp backup₁ backup₂' ldes' γ_backup₁ γ_backup₂ γ_backup₂' γ_new_backup l lexp ldes expected desired _ abstraction₂ log₂ requests₂ vers₂ order₂ index₂ validated₂ with "[$] [$] [$] [$] [$] [#] [$] [$] [Hbackup_managed₂] [$] []") as "H"; try done.
+      iPoseProof (execute_lp backup₁ backup₂' ldes' γ_backup₁ γ_backup₂ γ_backup₂' γ_new_backup l lexp ldes expected desired _ actual₂ abstraction₂ log₂ requests₂ vers₂ order₂ index₂ validated₂ with "[$] [$] [$] [$] [$] [#] [$] [$] [Hbackup_managed₂] [$S'] [$] [$] [$] [$] [$] [$] [$] [Hcache] [Hlock] [Hcl] [$] [$] [Hreginv] [$] [$] [$] [Hcl'] [$●Hγᵢ] [$] [Hγ Hγ'] [$] [●Hγ_abs ●Hγ_abs']") as "H"; try done.
       { by destruct (Nat.even ver₂). }
       { rewrite Hlen_exp //. }
       { destruct (decide (1 < size log₂)).
@@ -3329,7 +3331,10 @@ Qed.
           exists ver'. eauto.
         - rewrite bool_decide_eq_false_2 //.
           rewrite bool_decide_eq_false_2 // in Hvers₂.  }
-      { rewrite }
+      { iCombine "Hγ Hγ'" as "Hγ".
+        rewrite Qp.quarter_quarter //. }
+      { iCombine "●Hγ_abs ●Hγ_abs'" as "$". }
+      
 
       wp_cmpxchg_suc.
       iNod (execute_lp )
