@@ -108,8 +108,10 @@ Section code.
           let: "backup'" := array_clone "desired" #n in
           let: "shield'" := hazptr.(shield_new) "domain" in
           hazptr.(shield_set) "shield'" "backup'";;
-          if: (CAS ("l" +ₗ #backup_off) "backup" ("backup'" `tag` #1)) 
-            || (CAS ("l" +ₗ #backup_off) (untag "backup") ("backup'" `tag` #1)) then
+          let: "res" := CmpXchg ("l" +ₗ #backup_off) "backup" ("backup'" `tag` #1) in
+          if: Snd "res" || 
+            ((Fst "res" = untag "backup")
+              && (CAS ("l" +ₗ #backup_off) (untag "backup") ("backup'" `tag` #1))) then
             hazptr.(hazard_domain_retire) "domain" (untag "backup") #n;;
             try_validate n "l" "ver" "desired" "backup'";;
             hazptr.(shield_drop) "shield";;
@@ -2532,17 +2534,19 @@ Qed.
       iCombine "Hγ Hγ'" gives %[_ [=<-<-]].
       simplify_eq.
       destruct (decide (ver₃ = ver)) as [-> | Hneq]; first last.
-      { wp_cmpxchg_fail.
+      { rewrite Loc.add_0.
+        wp_cmpxchg_fail.
         iMod ("Hcl'" with "[$Hγ' $●Hγₕ' $Hreginv $●Hγᵣ $●Hγᵥ' $●Hγ_vers $Hbackup₃' $●Hγᵢ' $●Hγₒ $●Hγ_abs']") as "_".
         { iFrame "%". }
-        iMod ("Hcl" with "[$Hbackup $Hγ $Hlogtokens $●Hγᵢ $●Hγᵥ $Hcache $Hlock $Hver $●Hγₕ $●Hγ_val $Hbackup_managed₃ $●Hγ_abs]") as "_".
-        { iFrame "%". }
+        iMod ("Hcl" with "[$Hbackup $Hγ $Hlogtokens $●Hγᵢ $●Hγᵥ $Hcache $Hlock Hver $●Hγₕ $●Hγ_val $Hbackup_managed₃ $●Hγ_abs]") as "_".
+        { iFrame "%". rewrite Loc.add_0 //. }
         iApply fupd_mask_intro.
         { set_solver. }
         iIntros ">_ !>".
         wp_pures.
         iModIntro.
-        iApply ("HΦ" with "[$]"). } 
+        iApply ("HΦ" with "[$]"). }
+      rewrite Loc.add_0.
       wp_cmpxchg_suc.
       iDestruct (mono_nat_lb_own_valid with "●Hγᵥ ◯Hγᵥ") as %[_ Hle₃].
       (* assert (ver₁ = ver) as -> by lia. *)
@@ -2611,9 +2615,9 @@ Qed.
       (* iPoseProof (log_auth_frag_agree with "●Hγₕ ◯Hγₕ₁") as "%H'". *)
       (* destruct Hvalidated₃ as [-> | ([=] & _ & _ & _)]. *)
       iModIntro.
-      iMod ("Hcl" with "[$Hγ $Hlogtokens $●Hγᵢ' $●Hγᵥ'' $Hcache $Hbackup $Hver $●Hγₕ $●Hγ_val $●Hγ_abs $Hbackup_managed₃]") as "_".
+      iMod ("Hcl" with "[$Hγ $Hlogtokens $●Hγᵢ' $●Hγᵥ'' $Hcache $Hbackup Hver $●Hγₕ $●Hγ_val $●Hγ_abs $Hbackup_managed₃]") as "_".
       { rewrite even_succ_negb Heven /= last_snoc.
-        iExists γ_backup, backup. iFrame "%". iPureIntro.
+        iExists γ_backup, backup. rewrite Loc.add_0. iFrame "∗ %". iPureIntro.
         repeat split; auto.
         - rewrite bool_decide_eq_false_2 //. rewrite bool_decide_eq_false_2 // in Htag₃.
         - rewrite length_app /= Nat.add_1_r Hlenᵢ₃. do 2 f_equal. rewrite -Nat.Even_div2 // -Nat.even_spec //.
@@ -2637,6 +2641,7 @@ Qed.
       wp_bind (_ <- _)%E.
       iInv readN as "(%ver₄ & %log₄ & %abstraction₄ & %actual₄ & %cache₄ & %γ_backup₄ & %γ_backup₄' & %backup₄ & %backup₄' & %index₄ & %validated₄ & %t₄ & >Hver & >Hbackup & >Hγ & >%Hunboxed₄ & Hbackup_managed & >%Hindex₄ & >%Htag₄ & >%Hlenactual₄ & >%Hlencache₄ & >%Hloglen₄ & Hlogtokens & >%Hlogged₄ & >●Hγₕ & >●Hγ_abs & >%Habs_backup₄ & >%Habs_backup'₄ & >%Hlenᵢ₄ & >%Hnodup₄ & >%Hrange₄ & >●Hγᵢ & >●Hγᵥ & >Hcache & >%Hcons₄ & Hlock & >●Hγ_val & >%Hvalidated_iff₄ & >%Hvalidated_sub₄ & >%Hdom_eq₄)" "Hcl".
       iInv cached_wfN as "(%ver₄' & %log₄' & %abstraction₄' & %actual₄' & %γ_backup₄'' & %backup₄'' & %requests₄ & %vers₄ & %index₄' & %order₄ & %idx₄ & %t₄' & >●Hγᵥ'' & >Hbackup₄' & >Hγ' & >%Hlog₄' & >%Habs₄' & >●Hγₕ' & >●Hγ_abs' & >●Hγᵣ & Hreginv & >●Hγ_vers & >%Hdomvers₄ & >%Hvers₄ & >●Hγᵢ' & >●Hγₒ & >%Hdomord₄ & >%Hinj₄ & >%Hidx₄ & >%Hmono₄ & >%Hubord₄)" "Hcl'".
+      rewrite Loc.add_0.
       wp_store.
       change 2%Z with (Z.of_nat 2). simplify_eq.
       iDestruct (mono_nat_auth_own_agree with "●Hγᵥ ●Hγᵥ'") as %[_ ->].
@@ -2684,8 +2689,8 @@ Qed.
       pose proof Htag₄ as Htag₄'.
       rewrite bool_decide_eq_false_2 // in Htag₄'.
       simplify_eq.
-      iMod ("Hcl" with "[$Hγ $Hlogtokens $●Hγᵢ ●Hγᵢ'' $●Hγᵥ' ●Hγᵥ'' $Hcache Hcache' $Hbackup $Hver $●Hγₕ $●Hγ_val $Hbackup_managed ●Hγ_abs]") as "_".
-      { iFrame "%". iFrame.
+      iMod ("Hcl" with "[$Hγ $Hlogtokens $●Hγᵢ ●Hγᵢ'' $●Hγᵥ' ●Hγᵥ'' $Hcache Hcache' $Hbackup Hver $●Hγₕ $●Hγ_val $Hbackup_managed ●Hγ_abs]") as "_".
+      { rewrite Loc.add_0. iFrame "∗ %".
         repeat iSplit; auto.
         { rewrite Nat.Odd_div2 // Nat.Odd_succ Nat.Even_succ Nat.Odd_succ -Nat.even_spec //. }
         { rewrite /= Heven //. }
@@ -3372,6 +3377,8 @@ Qed.
           destruct (decide (t₂ = 0)) as [-> | Hvalid₂'].
           - rewrite bool_decide_eq_true_2 // in Htag₂.
           - rewrite bool_decide_eq_false_2 // in Htag₂. }
+        iPoseProof (already_linearized with "[//] [$] [$] [$] [$] [] []") as "H".
+        
         
 
 
