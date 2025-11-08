@@ -2814,7 +2814,7 @@ Qed.
     (backup backup₁' new_backup : blk) 
     (γ_backup γ_backup₁ γ_backup₁' γ_new_backup : gname)
     (l : loc) (lexp ldes : blk)
-    (expected desired cache : list val)
+    (expected desired cache actual₂ : list val)
     (abstraction₁ : gmap gname blk)
     (log₁ : gmap gname (list val))
     (requests₁ : list (gname * gname * gname))
@@ -2859,7 +2859,7 @@ Qed.
     log_frag_own γₕ γ_backup expected -∗
     (l +ₗ domain_off) ↦□ #d -∗
     hazptr.(IsHazardDomain) γd d -∗
-    hazptr.(Managed) γd backup γ_backup₁ n (node desired) -∗
+    hazptr.(Managed) γd backup γ_backup₁ n (node actual₂) -∗
     hazptr.(Shield) γd s' (NotValidated new_backup) -∗
     (* Token for linearization *)
     token γₜ -∗
@@ -3276,7 +3276,7 @@ Qed.
     wp_apply (wp_array_clone with "[$]").
     { lia. }
     { lia. }
-    iIntros (ldes') "[Hldes' Hldes]".
+    iIntros (ldes') "(Hldes & Hldes' & †Hldes')".
     wp_pures.
     wp_apply (hazptr.(shield_new_spec) with "[//] [//]").
     { solve_ndisj. }
@@ -3290,6 +3290,7 @@ Qed.
     wp_bind (CmpXchg _ _ _)%E.
     iInv readN as "(%ver₂ & %log₂ & %abstraction₂ & %actual₂ & %cache₂ & %γ_backup₂ & %γ_backup₂' & %backup₂ & %backup₂' & %index₂ & %validated₂ & %t₂ & >Hver & >Hbackup & >Hγ & >%Hunboxed₂ & Hbackup_managed₂ & >%Hindex₂ & >%Htag₂ & >%Hlenactual₂ & >%Hlencache₂ & >%Hloglen₂ & Hlog & >%Hlogged₂ & >●Hγₕ & >●Hγ_abs & >%Habs_backup₂ & >%Habs_backup'₂ & >%Hlenᵢ₂ & >%Hnodup₂ & >%Hrange₂ & >●Hγᵢ & >●Hγᵥ & >Hcache & >%Hcons₂ & Hlock & >●Hγ_val & >%Hvalidated_iff₂ & >%Hvalidated_sub₂ & >%Hdom_eq₂)" "Hcl".
     iInv cached_wfN as "(%ver₂' & %log₂' & %abstraction₂' & %actual₂' & %γ_backup₂'' & %backup₂'' & %requests₂ & %vers₂ & %index₂' & %order₂ & %idx₂ & %t₂' & >●Hγᵥ' & >Hbackup' & >Hγ' & >%Hlog₂ & >%Habs₂ & >●Hγₕ' & >●Hγ_abs' & >●Hγᵣ & Hreginv & >●Hγ_vers & >%Hdomvers₂ & >%Hvers₂ & >●Hγᵢ' & >●Hγₒ & >%Hdomord₂ & >%Hinj₂ & >%Hidx₂ & >%Hmono₂ & >%Hubord₂)" "Hcl'".
+    iDestruct (mono_nat_auth_own_agree with "●Hγᵥ ●Hγᵥ'") as %[_ <-].
     iDestruct (log_auth_auth_agree with "●Hγₕ ●Hγₕ'") as %<-.
     iDestruct (index_auth_auth_agree with "●Hγᵢ ●Hγᵢ'") as %<-.
     iDestruct (abstraction_auth_auth_agree with "●Hγ_abs ●Hγ_abs'") as %<-.
@@ -3306,6 +3307,7 @@ Qed.
     - iDestruct (pointsto_combine with "Hbackup Hbackup'") as "[Hbackup _]".
       rewrite dfrac_op_own Qp.half_half.
       iMod token_alloc as "[%γ_new_backup Hγ_new_backup]".
+      wp_cmpxchg_suc.
 
     (* (backup backup' new_backup : blk) 
     (γ_backup γ_backup' γ_new_backup : gname)
@@ -3317,8 +3319,17 @@ Qed.
     (vers₁ order₁ : gmap gname nat)
     (index₁ : list gname)
     (validated : gset gname) *)
-      iPoseProof (execute_lp backup₁ backup₂' ldes' γ_backup₂ γ_backup₂' γ_new_backup l lexp ldes expected desired _ abstraction₂ log₂ requests₂ vers₂ order₂ index₂ validated₂ with "[$] [$] [] []") as "H"; try done.
-      { }
+      iPoseProof (execute_lp backup₁ backup₂' ldes' γ_backup₁ γ_backup₂ γ_backup₂' γ_new_backup l lexp ldes expected desired _ abstraction₂ log₂ requests₂ vers₂ order₂ index₂ validated₂ with "[$] [$] [$] [$] [$] [#] [$] [$] [Hbackup_managed₂] [$] []") as "H"; try done.
+      { by destruct (Nat.even ver₂). }
+      { rewrite Hlen_exp //. }
+      { destruct (decide (1 < size log₂)).
+        - rewrite bool_decide_eq_true_2 //.
+          rewrite bool_decide_eq_true_2 // in Hvers₂.
+          destruct Hvers₂ as (ver' & ? & ? & ? & ?).
+          exists ver'. eauto.
+        - rewrite bool_decide_eq_false_2 //.
+          rewrite bool_decide_eq_false_2 // in Hvers₂.  }
+      { rewrite }
 
       wp_cmpxchg_suc.
       iNod (execute_lp )
