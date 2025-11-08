@@ -3356,7 +3356,23 @@ Qed.
       wp_pures.
       iModIntro.
       iApply ("HΦ" with "[$]").
-      
+    - destruct (decide (t₁ = 0)) as [-> | Hne₁].
+      + (* First backup was validated *)
+        (* It cannot be the case that the unmarked pointers are equal, as this would imply that it became unvalidated *)
+        destruct (decide (backup₁ = backup₂)) as [<- | Hne₁].
+        { destruct (decide (t₂ = 1%nat)) as [-> | Hvalid₂].
+          { assert (γ_backup₂ ∉ validated₂) as Hinvalid₂ by naive_solver.
+            rewrite (bool_decide_eq_true_2 (γ_backup₁ ∈ validated₁)); last naive_solver.
+            iPoseProof (validated_auth_frag_agree with "●Hγ_val ◯Hγ_val₁") as "%Hvalid₁".
+            iInv casN as "[[S H] | [>Hlintok _]]" "Hclose".
+            { wp_cmpxchg_fail.
+              iPoseProof (hazptr.(shield_managed_agree) with "S Hbackup_managed₂") as "->".
+              set_solver. }
+            { iCombine "Hγₜ Hlintok" gives %[]. } }
+          destruct (decide (t₂ = 0)) as [-> | Hvalid₂'].
+          - rewrite bool_decide_eq_true_2 // in Htag₂.
+          - rewrite bool_decide_eq_false_2 // in Htag₂. }
+        
 
 
 
