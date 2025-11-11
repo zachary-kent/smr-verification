@@ -59,6 +59,3 @@ Definition tstack_pop : val :=
     "ov".
 
 End treiber.
-
-
-Check tstack_pop_loop.

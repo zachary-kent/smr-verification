@@ -93,7 +93,7 @@ Definition UU γtok γinfo γptrs γU γR γV info sbvmap slist : iProp :=
   (⊤ ∖ gset_to_coPset (dom info),sids_from (length slist)) ↦P2[γV] false ∗
   toks γtok (⊤ ∖ gset_to_coPset (dom info)) (sids_from (length slist)).
 
-Definition GhostQuadrants γtok eγinfo γptrs γU γR γV info sbvmap slist : iProp :=
+Definition GhostQuadrants γtok γinfo γptrs γU γR γV info sbvmap slist : iProp :=
   CC γtok γinfo γptrs γU γR γV info sbvmap slist ∗
   CU γtok γinfo γptrs γU γR γV info sbvmap slist ∗
   UC γtok γinfo γptrs γU γR γV info sbvmap slist ∗
@@ -131,8 +131,6 @@ Definition HazardDomain γsb γtok γinfo γdata γptrs γU γR γV (d hBag rSet
     ⌜dom info = dom data⌝ ∗
     ⌜∀ p i, ptrs !! p = Some i → ∃ z, info !! i = Some z ∧ z.1.(addr) = p ⌝
   .
-
-Check HazardDomain.
 
 Definition hazptrInvN := mgmtN N .@ "inv".
 
@@ -926,7 +924,6 @@ Proof.
     WP slot_set #slot #(oblk_to_lit p) @ E {{ v, Φ v }}
   )%I as "slot_set".
   { iIntros "Shs↦ †Sh ShSlot ●TI HΦ".
-    Check sbs.(slot_set_spec).
     awp_apply (sbs.(slot_set_spec) with "ShSlot") without "HΦ".
     iInv "IHD" as (??? hmap1 slist1 rs1)
       "(>M & >datM & >coM & >B & >RS & >●Q & >●X & >Reg & Ret & >%Hdom & >%HInfo)".
