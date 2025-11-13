@@ -51,6 +51,7 @@ Definition hazard_pointer_code_impl : hazard_pointer_code := {|
   spec_hazptr.shield_new := shield_new;
   spec_hazptr.shield_set := shield_set;
   spec_hazptr.shield_protect := shield_protect;
+  spec_hazptr.shield_protect_tagged := shield_protect_tagged;
   spec_hazptr.shield_unset := shield_unset;
   spec_hazptr.shield_drop := shield_drop;
 |}.
@@ -71,6 +72,7 @@ Definition hazard_pointer_impl Σ `{!heapGS Σ, !hazptrG Σ}
   spec_hazptr.shield_set_spec := shield_set_spec hazptrN (slot_bag_impl Σ) (retired_list_impl Σ);
   spec_hazptr.shield_validate := shield_validate hazptrN (slot_bag_impl Σ) (retired_list_impl Σ);
   spec_hazptr.shield_protect_spec := shield_protect_spec hazptrN (slot_bag_impl Σ) (retired_list_impl Σ);
+  spec_hazptr.shield_protect_tagged_spec := shield_protect_tagged_spec hazptrN (slot_bag_impl Σ) (retired_list_impl Σ);
   spec_hazptr.shield_unset_spec := shield_unset_spec hazptrN (slot_bag_impl Σ) (retired_list_impl Σ);
   spec_hazptr.shield_drop_spec := shield_drop_spec hazptrN (slot_bag_impl Σ) (retired_list_impl Σ);
   spec_hazptr.shield_acc := shield_acc hazptrN (slot_bag_impl Σ);

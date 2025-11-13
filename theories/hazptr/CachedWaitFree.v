@@ -4,6 +4,7 @@ From iris.program_logic Require Import atomic.
 From iris.algebra Require Import auth gmap gset list lib.mono_nat.
 From smr.lang Require Import lang proofmode notation lib.array.
 From iris.base_logic.lib Require Import token ghost_var mono_nat invariants.
+From smr.program_logic Require Import atomic.
 
 (* plus specific modules that carry instances you need *)
 Import derived_laws.bi.
@@ -1148,22 +1149,6 @@ Section cached_wf.
     rewrite -lookup_fmap /= Hvs'' //.
   Qed.
 
-  (* Lemma log_auth_auth_op γₕ p q (log log' : gmap loc (gname * list val)) :
-    log_auth_own γₕ p log -∗
-      log_auth_own γₕ q log  -∗
-        log_auth_own γₕ (p ⋅ q) log.
-  Proof.
-    iIntros "H H'".
-    rewrite /log_auth_own.
-    rewrite -auth_auth_dfrac_op.
-    iCombine "H H'" gives %Hagree%auth_auth_dfrac_op_inv.
-    iPureIntro.
-    apply map_eq.
-    intros i.
-    apply leibniz_equiv, (inj (fmap to_agree)).
-    repeat rewrite -lookup_fmap //.
-  Qed. *)
-
   Lemma wp_array_copy_to_wk γ γᵥ γₕ γᵢ γ_val γz γ_abs (dst src : loc) (n : nat) vdst ver :
     (* Length of destination matches that of source (bigatomic) *)
     length vdst = n →
@@ -1264,14 +1249,6 @@ Definition vers_cons γᵥ γₕ γᵢ vers vdst : iProp Σ :=
     - intros [k H]. exists k. lia.
     - intros [k H]. exists (Z.to_nat k). lia.
   Qed.
-
-From iris.algebra Require Import excl_auth csum.
-From iris.base_logic.lib Require Import invariants token.
-From smr.program_logic Require Import atomic.
-From smr.lang Require Import proofmode notation.
-From iris.prelude Require Import options.
-
-From smr Require Import helpers.
 
   Lemma wp_array_copy_to_half' γ γᵥ γₕ γᵢ γ_val γz γ_abs dst src (vs vs' : list val) i n dq :
     i ≤ n → length vs = n - i → length vs = length vs' →
@@ -1701,17 +1678,6 @@ Lemma gmap_injective_insert `{Countable K, Countable V} (k : K) (v : V) (m : gma
     | (LitV (LitInt (FinInt i)), _) :: _ => Some i
     | _ => None
     end.
-
-  From smr.program_logic Require Import atomic.
-  From smr.lang Require Import proofmode notation.
-
-From iris.algebra Require Import agree.
-From iris.base_logic.lib Require Import invariants ghost_var.
-From smr.program_logic Require Import atomic.
-From smr.lang Require Import proofmode notation.
-From iris.prelude Require Import options.
-
-From smr Require Import helpers hazptr.spec_hazptr hazptr.spec_stack hazptr.code_treiber.
 
   Lemma read_spec (γ γᵥ γₕ γᵢ γ_val γz γ_abs : gname) (l d : loc) (n : nat) :
     n > 0 →
