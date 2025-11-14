@@ -67,6 +67,8 @@ Class cached_wfG (Σ : gFunctors) := {
   #[local] cached_wf_abstractonUR :: inG Σ abstractionUR;
 }.
 
+Set Default Timeout 60.
+
 Definition cached_wfΣ : gFunctors := #[
   ghost_varΣ bool;
   ghost_varΣ (gname * list val);
@@ -99,9 +101,9 @@ Section cached_wf.
 
   Variable (hazptr_code : hazard_pointer_code).
 
-  Definition BigAtomic γ (vs : list val) : iProp Σ := ∃ (backup : gname), ghost_var γ (1/2) (backup, vs).
+  Definition CachedWF γ (vs : list val) : iProp Σ := ∃ (backup : gname), ghost_var γ (1/2) (backup, vs).
 
-  Global Instance BigAtomic_Timeless γ vs : Timeless (BigAtomic γ vs).
+  Global Instance CachedWF_Timeless γ vs : Timeless (CachedWF γ vs).
   Proof. apply _. Qed.
 
   Lemma wp_array_equal (l l' : loc) (dq dq' : dfrac) (vs vs' : list val) n :
@@ -608,7 +610,7 @@ Section cached_wf.
       (l +ₗ backup_off) ↦{# 1/2} #(Some (Loc.blk_to_loc backup) &ₜ t) ∗
       (* Half ownership of logical state *)
       ghost_var γ (1/4) (γ_backup, actual) ∗
-      (* Every value of BigAtomic is unboxed *)
+      (* Every value of CachedWF is unboxed *)
       ⌜Forall val_is_unboxed actual⌝ ∗
       (* Shared read ownership of backup using node predicate *)
       hazptr.(Managed) γz backup γ_backup len (node actual) ∗
@@ -660,9 +662,9 @@ Section cached_wf.
       ⌜dom log = dom abstraction⌝.
 
   Definition AU_cas (Φ : val → iProp Σ) γ (expected desired : list val) (lexp ldes : loc) dq dq' : iProp Σ :=
-       AU <{ ∃∃ actual, BigAtomic γ actual }>
+       AU <{ ∃∃ actual, CachedWF γ actual }>
             @ ⊤ ∖ (↑mainN ∪ ↑readN ∪ ↑casN ∪ ↑ptrsN hazptrN), ↑mgmtN hazptrN
-          <{ if bool_decide (actual = expected) then BigAtomic γ desired else BigAtomic γ actual,
+          <{ if bool_decide (actual = expected) then CachedWF γ desired else CachedWF γ actual,
              COMM lexp ↦∗{dq} expected ∗ ldes ↦∗{dq'} desired -∗ Φ #(bool_decide (actual = expected)) }>.
 
   Definition cas_inv (Φ : val → iProp Σ) (γ γₑ γₗ γₜ γ_exp γd : gname) (lexp : blk) (lexp_src ldes : loc) (dq dq' : dfrac) (expected desired : list val) s : iProp Σ :=
@@ -896,7 +898,7 @@ Section cached_wf.
   Qed.
 
   Lemma wp_array_copy_to' γ γᵥ γₕ γᵢ γ_val γz γ_abs (dst src : loc) (n i : nat) vdst ver :
-    (* Length of destination matches that of source (bigatomic) *)
+    (* Length of destination matches that of source (CachedWF) *)
     i ≤ n → length vdst = n - i →
       inv readN (read_inv γ γᵥ γₕ γᵢ γ_val γz γ_abs src n) -∗
         (* The current version is at least [ver] *)
@@ -1072,7 +1074,7 @@ Section cached_wf.
 
 
   Lemma wp_array_copy_to_wk γ γᵥ γₕ γᵢ γ_val γz γ_abs (dst src : loc) (n : nat) vdst ver :
-    (* Length of destination matches that of source (bigatomic) *)
+    (* Length of destination matches that of source (CachedWF) *)
     length vdst = n →
       inv readN (read_inv γ γᵥ γₕ γᵢ γ_val γz γ_abs src n) -∗
         (* The current version is at least [ver] *)
@@ -1285,7 +1287,7 @@ Definition vers_cons γᵥ γₕ γᵢ vers vdst : iProp Σ :=
   Lemma div2_def n : Nat.div2 (S (S n)) = S (Nat.div2 n).
   Proof. done. Qed.
 
-  Definition IsBigAtomic (γ : gname) (v : val) (n : nat) : iProp Σ :=
+  Definition IsCachedWF (γ : gname) (v : val) (n : nat) : iProp Σ :=
     ∃ (dst d : loc) (γₕ γᵥ γᵣ γᵢ γₒ γ_vers γ_val γ_abs γd : gname),
       ⌜n > 0⌝ ∗
       ⌜v = #dst⌝ ∗
@@ -1294,7 +1296,7 @@ Definition vers_cons γᵥ γₕ γᵢ vers vdst : iProp Σ :=
       inv readN (read_inv γ γᵥ γₕ γᵢ γ_val γd γ_abs dst n) ∗
       inv mainN (cached_wf_inv γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ γ_abs γd dst n).
 
-  Global Instance IsBigAtomic_Persistent γ v n : Persistent (IsBigAtomic γ v n).
+  Global Instance IsCachedWF_Persistent γ v n : Persistent (IsCachedWF γ v n).
   Proof. apply _. Qed.
 
   Lemma array_persist l vs : l ↦∗ vs ==∗ l ↦∗□ vs.
@@ -1331,13 +1333,10 @@ Lemma gmap_injective_insert `{Countable K, Countable V} (k : K) (v : V) (m : gma
     - do 2 rewrite lookup_insert_ne //. apply Hinj.
   Qed.    
 
-  Lemma new_big_atomic_spec (src dom : loc) γz dq vs :
-    length vs > 0 → Forall val_is_unboxed vs →
-      {{{ IsHazardDomain hazptr γz dom ∗ src ↦∗{dq} vs }}}
-        cached_wf_new (length vs) #src #dom
-      {{{ v γ, RET v; src ↦∗{dq} vs ∗ IsBigAtomic γ v (length vs) ∗ BigAtomic γ vs }}}.
+  Lemma cached_wf_new_spec :
+      big_atomic_new_spec' cached_wfN hazptrN cached_wf_new hazptr CachedWF IsCachedWF.
   Proof using DISJN.
-    iIntros "%Hpos %Hunboxed %Φ [#Hdom Hsrc] HΦ".
+    iIntros (γd d n src dq vs Hpos Hlen Hunboxed Φ) "[#Hdom Hsrc] HΦ".
     wp_rec.
     wp_pures.
     wp_alloc l as "Hl" "†Hl".
@@ -1353,10 +1352,10 @@ Lemma gmap_injective_insert `{Countable K, Countable V} (k : K) (v : V) (m : gma
     { lia. }
     iIntros (backup) "(Hsrc & Hbackup & †Hbackup)".
     wp_store. wp_store.
-    rewrite -{5}(length_replicate (length vs) #0).
+    (* rewrite -{5}(length_replicate (length vs) #0). *)
     wp_smart_apply (wp_array_copy_to with "[$Hcache $Hsrc]").
     { rewrite length_replicate //. }
-    { rewrite length_replicate //. }
+    { done. }
     iIntros "[[Hcache Hcache'] Hsrc]".
     iMod token_alloc as "[%γ_backup Hγ_backup]".
     iMod (ghost_var_alloc (γ_backup, vs)) as "(%γ & Hγ & Hγ' & Hγ'')".
@@ -1377,9 +1376,10 @@ Lemma gmap_injective_insert `{Countable K, Countable V} (k : K) (v : V) (m : gma
     { by apply auth_auth_valid. }
     change #backup with #(Some (Loc.blk_to_loc backup) &ₜ O).
     change (Z.of_nat 1) with 1%Z.
+    simplify_eq.
     iMod (hazptr.(hazard_domain_register) (node vs) with "Hdom [$Hbackup $†Hbackup //]") as "Hmanaged".
     { solve_ndisj. }
-    iMod (inv_alloc readN _ (read_inv γ γᵥ γₕ γᵢ γ_val γz γ_abs l (length vs)) with "[$Hmanaged Hvalidated $Hγ' $Hγᵥ' Hγᵥ'' Hγ_val Hγₕ Hγᵢ' Hγᵢ'' Hcache Hcache' Hversion Hγ_backup Hγ_abs]") as "#Hreadinv".
+    iMod (inv_alloc readN _ (read_inv γ γᵥ γₕ γᵢ γ_val γd γ_abs l (length vs)) with "[$Hmanaged Hvalidated $Hγ' $Hγᵥ' Hγᵥ'' Hγ_val Hγₕ Hγᵢ' Hγᵢ'' Hcache Hcache' Hversion Hγ_backup Hγ_abs]") as "#Hreadinv".
     { iExists {[ γ_backup := vs ]}, {[ γ_backup := backup ]}, vs. iFrame "∗ # %".
       iExists γ_backup, backup.
       iNext.
@@ -1400,7 +1400,7 @@ Lemma gmap_injective_insert `{Countable K, Countable V} (k : K) (v : V) (m : gma
     { rewrite fmap_empty. by apply auth_auth_valid. }
     iMod (own_alloc (● (fmap (M := gmap gname) to_agree {[ γ_backup := O ]}))) as "[%γₒ Hγₒ]".
     { rewrite map_fmap_singleton. by apply auth_auth_valid, singleton_valid. }
-    iMod (inv_alloc mainN _ (cached_wf_inv γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ γ_abs γz l (length vs)) with "[$Hγ'' $Hγₕ' $Hγᵣ $Hvalidated' $Hγᵥ Hγ_vers Hγₒ $Hγᵢ $Hγ_abs']") as "#Hinv".
+    iMod (inv_alloc mainN _ (cached_wf_inv γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ γ_abs γd l (length vs)) with "[$Hγ'' $Hγₕ' $Hγᵣ $Hvalidated' $Hγᵥ Hγ_vers Hγₒ $Hγᵢ $Hγ_abs']") as "#Hinv".
     { iExists ∅, {[ γ_backup := O ]}, O. 
       rewrite /registry_inv /vers_auth_own map_fmap_singleton lookup_singleton /=. iFrame.
       rewrite bool_decide_eq_false_2; first last.
@@ -1605,8 +1605,8 @@ Lemma gmap_injective_insert `{Countable K, Countable V} (k : K) (v : V) (m : gma
     | _ => None
     end.
 
-  Lemma read_spec :
-    big_atomic_read_spec' cached_wfN hazptrN (cached_wf_read hazptr) BigAtomic IsBigAtomic.
+  Lemma cached_wf_read_spec :
+    big_atomic_read_spec' cached_wfN hazptrN (cached_wf_read hazptr) CachedWF IsCachedWF.
   Proof using DISJN.
     iIntros (γ v n) "(%l & %d & %γₕ & %γᵥ & %γᵣ & %γᵢ & %γₒ & %γ_vers & %γ_val & %γ_abs & %γd & %Hpos & -> & #Hd & #Hd_domain & #Hreadinv & #Hinv) %Φ AU".
     wp_rec. wp_pures. rewrite Loc.add_0.
@@ -2682,7 +2682,7 @@ Lemma read'_spec_inv (actual₁ cache₁ copy desired : list val) (γ γᵥ γ�
     iMod (lc_fupd_elim_later with "Hcredit AU") as "AU".
     iMod "AU" as (vs) "[[%γ_backup'' Hγ'] [_ Hconsume]]".
     { set_solver. }
-    rewrite /BigAtomic.
+    rewrite /CachedWF.
     iCombine "Hγ Hγ'" gives %[_ [=<-<-]].
     iMod (ghost_var_update_halves (γ_new_backup, desired) with "Hγ Hγ'") as "[Hγ Hγ']".
     simplify_eq.
@@ -2842,8 +2842,8 @@ Lemma read'_spec_inv (actual₁ cache₁ copy desired : list val) (γ γᵥ γ�
       + auto.
   Qed.
 
-  Lemma cas_spec :
-    big_atomic_cas_spec' cached_wfN hazptrN (cached_wf_cas hazptr) BigAtomic IsBigAtomic.
+  Lemma cached_wf_cas_spec :
+    big_atomic_cas_spec' cached_wfN hazptrN (cached_wf_cas hazptr) CachedWF IsCachedWF.
   Proof using DISJN.
     iIntros (γ v n lexp ldes dq dq' expected desired Hlen_exp Hlen_des Hexpunboxed Hdesunboxed) "(%l & %d & %γₕ & %γᵥ & %γᵣ & %γᵢ & %γₒ & %γ_vers & %γ_val & %γ_abs & %γd & %Hpos & -> & #Hd & #Hd_domain & #Hreadinv & #Hinv) Hlexp Hldes %Φ AU".
     wp_rec.

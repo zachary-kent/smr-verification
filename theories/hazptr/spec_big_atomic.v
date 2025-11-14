@@ -30,9 +30,9 @@ Definition readN := big_atomicN .@ "read".
 
 Definition big_atomic_new_spec' : Prop :=
   ∀ γd d n l dq vs,
-    n > 0 → length vs = n →
+    n > 0 → length vs = n → Forall val_is_unboxed vs →
       {{{ hazptr.(IsHazardDomain) γd d ∗ l ↦∗{dq} vs }}}
-        big_atomic_new n #d #l #n
+        big_atomic_new n #l #d
       {{{ γ ba, RET ba; IsBigAtomic γ ba n ∗ BigAtomic γ vs ∗ l ↦∗{dq} vs }}}.
 
 Definition big_atomic_read_spec' : Prop :=

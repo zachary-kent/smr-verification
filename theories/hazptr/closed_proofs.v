@@ -298,12 +298,12 @@ Definition cached_wf_impl Σ `{!heapGS Σ, !hazptrG Σ, !cached_wfG Σ}
   big_atomic_spec_code := cached_wf_code_impl;
 
   BigAtomic := CachedWF;
-  IsCachedWF := IsCachedWF cached_wfN hazptrN (hazard_pointer_impl Σ);
+  IsBigAtomic := IsCachedWF cached_wfN hazptrN (hazard_pointer_impl Σ);
 
   BigAtomic_Timeless := CachedWF_Timeless;
-  BigAtomic_Persistent := IsCachedWF_Persistent cached_wfN hazptrN (hazard_pointer_impl Σ);
+  IsBigAtomic_Persistent := IsCachedWF_Persistent cached_wfN hazptrN (hazard_pointer_impl Σ);
 
-  big_atomic_new_spec := cached_wf_new_spec cached_wfN hazptrN (hazard_pointer_impl Σ);
-  big_atomic_read_spec := cached_wf_read_spec cached_wfN hazptrN ltac:(solve_ndisj) (hazard_pointer_impl Σ);
-  big_atomic_cas_spec := cached_wf_cas_spec cached_wfN hazptrN ltac:(solve_ndisj) (hazard_pointer_impl Σ);
+  big_atomic_new_spec := new_big_atomic_spec cached_wfN hazptrN (hazard_pointer_impl Σ);
+  big_atomic_read_spec := read_spec cached_wfN hazptrN ltac:(solve_ndisj) (hazard_pointer_impl Σ);
+  big_atomic_cas_spec := cas_spec cached_wfN hazptrN ltac:(solve_ndisj) (hazard_pointer_impl Σ);
 |}.
