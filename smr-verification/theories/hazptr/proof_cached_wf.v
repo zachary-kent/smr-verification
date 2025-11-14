@@ -67,8 +67,6 @@ Class cached_wfG (Σ : gFunctors) := {
   #[local] cached_wf_abstractonUR :: inG Σ abstractionUR;
 }.
 
-Set Default Timeout 60.
-
 Definition cached_wfΣ : gFunctors := #[
   ghost_varΣ bool;
   ghost_varΣ (gname * list val);
