@@ -2,6 +2,7 @@ From smr.lang Require Import notation.
 From iris.prelude Require Import options.
 
 From smr Require Import hazptr.spec_hazptr.
+From smr.lang Require Import lib.array.
 
 Notation version_off := 0 (only parsing).
 Notation backup_off := 1 (only parsing).
