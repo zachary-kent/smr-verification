@@ -14,26 +14,32 @@ Section spec.
 Context `{!heapGS Σ}.
 Context (big_atomicN : namespace) (hazptrN : namespace) (DISJN : big_atomicN ## hazptrN).
 Variables
-  (big_atomic_new : val)
-  (big_atomic_read : val)
-  (big_atomic_cas : val).
+  (big_atomic_new : nat → val)
+  (big_atomic_read : nat → val)
+  (big_atomic_cas : nat → val).
 Variables
   (hazptr : hazard_pointer_spec Σ hazptrN)
   (BigAtomic : BigAtomicT Σ)
   (IsBigAtomic : IsBigAtomicT Σ big_atomicN).
 
+Definition mainN := big_atomicN .@ "main".
+
+Definition casN := big_atomicN .@ "cas".
+
+Definition readN := big_atomicN .@ "read".
+
 Definition big_atomic_new_spec' : Prop :=
   ∀ γd d n l dq vs,
     n > 0 → length vs = n →
       {{{ hazptr.(IsHazardDomain) γd d ∗ l ↦∗{dq} vs }}}
-        big_atomic_new #d #l #n
+        big_atomic_new n #d #l #n
       {{{ γ ba, RET ba; IsBigAtomic γ ba n ∗ BigAtomic γ vs ∗ l ↦∗{dq} vs }}}.
 
 Definition big_atomic_read_spec' : Prop :=
   ⊢ ∀ γ ba n,
     IsBigAtomic γ ba n -∗
       <<{ ∀∀ vs, BigAtomic γ vs }>>
-        big_atomic_read ba #n @ ⊤,(↑big_atomicN ∪ ↑(ptrsN hazptrN)),↑(mgmtN hazptrN)
+        big_atomic_read n ba @ ⊤,(↑readN ∪ ↑(ptrsN hazptrN)),↑(mgmtN hazptrN)
       <<{ ∃∃ l, BigAtomic γ vs | RET #l; l ↦∗ vs }>>.
 
 Definition big_atomic_cas_spec' : Prop :=
@@ -42,7 +48,7 @@ Definition big_atomic_cas_spec' : Prop :=
       Forall val_is_unboxed expected → Forall val_is_unboxed desired →
         IsBigAtomic γ ba n -∗ l_expected ↦∗{dq} expected -∗ l_desired ↦∗{dq'} desired -∗
           <<{ ∀∀ actual, BigAtomic γ actual }>>
-            big_atomic_cas ba #n @ ⊤,(↑big_atomicN ∪ ↑(ptrsN hazptrN)),↑(mgmtN hazptrN)
+            big_atomic_cas n ba #l_expected #l_desired @ ⊤,(↑mainN ∪ ↑readN ∪ ↑casN ∪ ↑(ptrsN hazptrN)),↑(mgmtN hazptrN)
           <<{ if bool_decide (actual = expected) then 
                 BigAtomic γ desired 
               else 
@@ -52,9 +58,9 @@ Definition big_atomic_cas_spec' : Prop :=
 End spec.
 
 Record big_atomic_code : Type := BigAtomicCode {
-  big_atomic_new : val;
-  big_atomic_read : val;
-  big_atomic_cas : val;
+  big_atomic_new : nat → val;
+  big_atomic_read : nat → val;
+  big_atomic_cas : nat → val;
 }.
 
 Record big_atomic_spec {Σ} `{!heapGS Σ} {big_atomicN hazptrN : namespace}

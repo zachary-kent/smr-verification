@@ -13,7 +13,7 @@ Section cached_wf.
 
   Variable (hazptr : hazard_pointer_code).
 
-  Definition new_big_atomic (n : nat) : val :=
+  Definition cached_wf_new (n : nat) : val :=
     λ: "src" "domain",
       let: "dst" := AllocN #(S (S (S n))) #0 in
       "dst" +ₗ #backup_off <- array_clone "src" #n;;
@@ -24,7 +24,7 @@ Section cached_wf.
   Definition is_valid : val :=
     λ: "l", tag "l" = #0.
 
-  Definition read (n : nat) : val :=
+  Definition cached_wf_read (n : nat) : val :=
     λ: "l",
       let: "ver" := !("l" +ₗ #version_off) in
       let: "data" := array_clone ("l" +ₗ #cache_off) #n in
@@ -66,7 +66,7 @@ Section cached_wf.
         #()
       else #().
 
-  Definition cas (n : nat) : val :=
+  Definition cached_wf_cas (n : nat) : val :=
     λ: "l" "expected" "desired",
       let: "ver" := !("l" +ₗ #version_off) in
       let: "domain" := !("l" +ₗ #domain_off) in

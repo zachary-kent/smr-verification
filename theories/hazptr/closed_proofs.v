@@ -18,6 +18,8 @@ From smr.hazptr Require Export code_dglm proof_dglm.
 From smr.hazptr Require Export spec_rdcss code_rdcss proof_rdcss.
 From smr.hazptr Require Export spec_cldeque code_cldeque proof_cldeque.
 From smr.hazptr Require Export spec_ordered_set code_harris_operations proof_harris_michael_find proof_harris_find.
+From smr.hazptr Require Export spec_big_atomic.
+From smr.hazptr Require Export code_cached_wf proof_cached_wf.
 
 From iris.prelude Require Import options.
 
@@ -32,6 +34,7 @@ Definition rdcssN := nroot .@ "rdcss".
 Definition cldequeN := nroot .@ "cldeque".
 Definition hsN := nroot .@ "hs".
 Definition hmsN := nroot .@ "hms".
+Definition cached_wfN := nroot .@ "cached_wf".
 
 Class hazptrG Σ := HazPtrG {
   #[local] hazptr_reclamationG :: reclamationG Σ;
@@ -282,3 +285,25 @@ Program Definition hm_impl Σ `{!heapGS Σ, !hazptrG Σ, !hlG Σ}
 Program Definition harris_impl Σ `{!heapGS Σ, !hazptrG Σ, !hlG Σ}
     : ordset_spec Σ hsN hazptrN ltac:(solve_ndisj) (hazard_pointer_impl Σ) :=
   harris_op_impl Σ hsN ltac:(solve_ndisj) (harris_impl Σ hsN hazptrN ltac:(solve_ndisj) (hazard_pointer_impl Σ)).
+
+
+Definition cached_wf_code_impl : big_atomic_code := {|
+  big_atomic_new := cached_wf_new;
+  big_atomic_read := (cached_wf_read hazard_pointer_code_impl);
+  big_atomic_cas := (cached_wf_cas hazard_pointer_code_impl);
+|}.
+
+Definition cached_wf_impl Σ `{!heapGS Σ, !hazptrG Σ, !cached_wfG Σ}
+    : big_atomic_spec Σ cached_wfN hazptrN ltac:(solve_ndisj) (hazard_pointer_impl Σ) := {|
+  big_atomic_spec_code := cached_wf_code_impl;
+
+  BigAtomic := CachedWF;
+  IsCachedWF := IsCachedWF cached_wfN hazptrN (hazard_pointer_impl Σ);
+
+  BigAtomic_Timeless := CachedWF_Timeless;
+  BigAtomic_Persistent := IsCachedWF_Persistent cached_wfN hazptrN (hazard_pointer_impl Σ);
+
+  big_atomic_new_spec := cached_wf_new_spec cached_wfN hazptrN (hazard_pointer_impl Σ);
+  big_atomic_read_spec := cached_wf_read_spec cached_wfN hazptrN ltac:(solve_ndisj) (hazard_pointer_impl Σ);
+  big_atomic_cas_spec := cached_wf_cas_spec cached_wfN hazptrN ltac:(solve_ndisj) (hazard_pointer_impl Σ);
+|}.
