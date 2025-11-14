@@ -37,15 +37,17 @@ Definition big_atomic_read_spec' : Prop :=
       <<{ ∃∃ l, BigAtomic γ vs | RET #l; l ↦∗ vs }>>.
 
 Definition big_atomic_cas_spec' : Prop :=
-  ⊢ ∀ γ ba n (l_expected l_desired : loc) (dq dq' : dfrac) (expected desired : list val),
-  IsBigAtomic γ ba n -∗ l_expected ↦∗{dq} expected -∗ l_desired ↦∗{dq'} desired -∗
-    <<{ ∀∀ actual, BigAtomic γ actual }>>
-      big_atomic_cas ba #n @ ⊤,(↑big_atomicN ∪ ↑(ptrsN hazptrN)),↑(mgmtN hazptrN)
-    <<{ if bool_decide (actual = expected) then 
-          BigAtomic γ desired 
-        else 
-          BigAtomic γ actual 
-      | RET #(bool_decide (actual = expected)); l_expected ↦∗{dq} expected ∗ l_desired ↦∗{dq'} desired  }>>.
+  ∀ γ ba n (l_expected l_desired : loc) (dq dq' : dfrac) (expected desired : list val),
+    length expected = n → length desired = n →
+      Forall val_is_unboxed expected → Forall val_is_unboxed desired →
+        IsBigAtomic γ ba n -∗ l_expected ↦∗{dq} expected -∗ l_desired ↦∗{dq'} desired -∗
+          <<{ ∀∀ actual, BigAtomic γ actual }>>
+            big_atomic_cas ba #n @ ⊤,(↑big_atomicN ∪ ↑(ptrsN hazptrN)),↑(mgmtN hazptrN)
+          <<{ if bool_decide (actual = expected) then 
+                BigAtomic γ desired 
+              else 
+                BigAtomic γ actual 
+            | RET #(bool_decide (actual = expected)); l_expected ↦∗{dq} expected ∗ l_desired ↦∗{dq'} desired  }>>.
 
 End spec.
 
