@@ -1364,6 +1364,7 @@ Definition vers_cons γᵥ γₕ γᵢ vers vdst : iProp Σ :=
 
   Definition is_cached_wf (v : val) (γ : gname) (n : nat) : iProp Σ :=
     ∃ (dst d : loc) (γₕ γᵥ γᵣ γᵢ γₒ γ_vers γ_val γ_abs γd : gname),
+      ⌜n > 0⌝ ∗
       ⌜v = #dst⌝ ∗
       (dst +ₗ domain_off) ↦□ #d ∗ 
       hazptr.(IsHazardDomain) γd d ∗
